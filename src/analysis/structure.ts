@@ -172,15 +172,56 @@ const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, 
  * Runs of similar windows at the same lag become pairs; pairs sharing an occurrence merge
  * into groups.
  */
-export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 32, maxGroups = 16, maxLength = Infinity): RepeatGroup[] {
+/**
+ * Beat-to-beat similarities summed along each diagonal, so the mean similarity of any two
+ * windows (`a` vs `a + lag`) is one subtraction.
+ */
+export class SimilarityIndex {
+  /** prefix[offset(lag) + i] = sum of similarity(k, k + lag) for k < i. */
+  private readonly prefix: Float64Array;
+  private readonly offsets: Int32Array;
+
+  constructor(readonly f: BeatFeatures) {
+    const n = f.beats;
+    this.offsets = new Int32Array(n + 1);
+    let total = 0;
+    for (let lag = 0; lag < n; ++lag) {
+      this.offsets[lag] = total;
+      total += n - lag + 1;
+    }
+    this.offsets[n] = total;
+    this.prefix = new Float64Array(total);
+    for (let lag = 0; lag < n; ++lag) {
+      const o = this.offsets[lag];
+      for (let k = 0; k < n - lag; ++k) this.prefix[o + k + 1] = this.prefix[o + k] + beatSimilarity(f, k, k + lag);
+    }
+  }
+
+  /** Mean similarity of [a, a+len) and [b, b+len), with a < b. */
+  window(a: number, b: number, len: number): number {
+    const lag = b - a;
+    const o = this.offsets[lag];
+    const end = Math.min(a + len, this.f.beats - lag);
+    if (end <= a) return 0;
+    return (this.prefix[o + end] - this.prefix[o + a]) / (end - a);
+  }
+}
+
+export function findRepeats(
+  f: BeatFeatures,
+  window = 16,
+  step = 4,
+  minLength = 32,
+  maxGroups = 16,
+  maxLength = Infinity,
+  index = new SimilarityIndex(f),
+): RepeatGroup[] {
   const starts: number[] = [];
   for (let i = 0; i + window <= f.beats; i += step) starts.push(i);
+  // First windows on the step grid, second windows at every beat, so lags are exact.
   const pairs: { a: number; b: number; s: number }[] = [];
-  for (let i = 0; i < starts.length; ++i) {
-    for (let j = i + 1; j < starts.length; ++j) {
-      if (starts[j] < starts[i] + window) continue;
-      pairs.push({ a: starts[i], b: starts[j], s: windowSimilarity(f, starts[i], starts[j], window) });
-    }
+  for (const a of starts) {
+    for (let b = a + window; b + window <= f.beats; ++b) pairs.push({ a, b, s: index.window(a, b, window) });
   }
   if (!pairs.length) return [];
   const sorted = pairs.map((p) => p.s).sort((x, y) => x - y);
@@ -244,10 +285,15 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
     groups.push({ length: len, starts: occ, score: r.score });
     if (groups.length >= maxGroups) break;
   }
-  // Drop groups that mostly repeat what stronger groups (found earlier) already cover.
-  const covered = new Uint8Array(f.beats);
+  // Drop groups that mostly repeat what stronger groups (found earlier) of about the same length
+  // already cover. A clearly shorter group inside a longer one stays: it is a part of that section
+  // that also repeats elsewhere, i.e. a nested group.
   const kept: RepeatGroup[] = [];
   for (const g of groups) {
+    const covered = new Uint8Array(f.beats);
+    for (const k of kept) {
+      if (k.length < 1.5 * g.length) for (const s of k.starts) covered.fill(1, s, Math.min(f.beats, s + k.length));
+    }
     let total = 0;
     let already = 0;
     for (const s of g.starts) {
@@ -258,7 +304,6 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
     }
     if (total && already / total > 0.6) continue;
     kept.push(g);
-    for (const s of g.starts) covered.fill(1, s, Math.min(f.beats, s + g.length));
   }
   return kept.sort((p, q) => p.starts[0] - q.starts[0]);
 }
@@ -270,11 +315,12 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
  * describes the same stretches as one already found (similar length, mostly the same beats) is
  * dropped. The nesting itself is derived later from which occurrences contain which.
  */
-export function findHierarchy(f: BeatFeatures, maxGroups = 24): RepeatGroup[] {
+export function findHierarchy(f: BeatFeatures, maxGroups = 24, refine = true): RepeatGroup[] {
+  const index = new SimilarityIndex(f);
   const scales = [
-    findRepeats(f, 16, 4, 32, 16),
-    findRepeats(f, 8, 4, 16, 16, 32),
-    findRepeats(f, 4, 2, 8, 16, 16),
+    findRepeats(f, 16, 4, 32, 16, Infinity, index),
+    findRepeats(f, 8, 4, 16, 16, 32, index),
+    findRepeats(f, 4, 2, 8, 16, 16, index),
   ];
   const coverage = (g: RepeatGroup) => {
     const marks = new Uint8Array(f.beats);
@@ -303,6 +349,14 @@ export function findHierarchy(f: BeatFeatures, maxGroups = 24): RepeatGroup[] {
       if (!pooled.some((p) => sameRepeat(p, g))) pooled.push(g);
     }
   }
+  for (const g of pooled) {
+    dropOverlaps(f, g);
+    if (refine) refineGroup(f, g);
+  }
+  // Refining can move two groups onto the same stretches: keep the one pooled first.
+  for (let i = pooled.length - 1; i >= 0; --i) {
+    if (pooled[i].starts.length < 2 || pooled.slice(0, i).some((p) => sameRepeat(p, pooled[i]))) pooled.splice(i, 1);
+  }
   // Equal-length groups whose occurrences sound alike are one group (e.g. a chorus phrase that
   // comes back in the final chorus).
   for (let i = 0; i < pooled.length; ++i) {
@@ -322,4 +376,83 @@ export function findHierarchy(f: BeatFeatures, maxGroups = 24): RepeatGroup[] {
     }
   }
   return pooled.sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+}
+
+/**
+ * Runs merged into one group can leave two occurrences on top of each other (a repeat that also
+ * matches itself a few measures later). Keep the one that sounds more like the rest of the group.
+ */
+export function dropOverlaps(f: BeatFeatures, g: RepeatGroup): void {
+  const fit = (s: number) => g.starts.reduce((sum, t) => (t === s ? sum : sum + windowSimilarity(f, Math.min(s, t), Math.max(s, t), g.length)), 0);
+  g.starts.sort((x, y) => x - y);
+  for (let k = 1; k < g.starts.length; ++k) {
+    if (g.starts[k] - g.starts[k - 1] >= g.length) continue;
+    g.starts.splice(fit(g.starts[k]) > fit(g.starts[k - 1]) ? k - 1 : k, 1);
+    --k;
+  }
+}
+
+/**
+ * Detection works on a grid of 2–4 beats, so an occurrence can be a beat or two off and edges
+ * snap to that grid. This moves each occurrence (relative to the first) by up to ±3 beats where
+ * that clearly sounds more alike, then moves the start and end one beat at a time to where the
+ * occurrences stop sounding alike.
+ */
+export function refineGroup(f: BeatFeatures, g: RepeatGroup): void {
+  const GAIN = 0.03; // a shift must improve the match by this much (repeats often match themselves when shifted)
+  const SHIFT = 3;
+  const ref = g.starts[0];
+  for (let k = 1; k < g.starts.length; ++k) {
+    const s = g.starts[k];
+    const base = windowSimilarity(f, ref, s, g.length);
+    let best = 0;
+    let bestScore = base + GAIN;
+    for (let d = -SHIFT; d <= SHIFT; ++d) {
+      if (d === 0 || s + d < 0 || s + d + g.length > f.beats) continue;
+      // Stay clear of the neighbouring occurrences.
+      if (g.starts.some((t, j) => j !== k && Math.abs(t - (s + d)) < g.length)) continue;
+      const v = windowSimilarity(f, ref, s + d, g.length);
+      if (v > bestScore) {
+        bestScore = v;
+        best = d;
+      }
+    }
+    g.starts[k] = s + best;
+  }
+
+  // Mean similarity across occurrences of beat i (relative to the start), and of a beat pair.
+  const beatSim = (i: number) => {
+    let sum = 0;
+    let n = 0;
+    for (let k = 1; k < g.starts.length; ++k) {
+      const a = ref + i;
+      const b = g.starts[k] + i;
+      if (a < 0 || b < 0 || a >= f.beats || b >= f.beats) continue;
+      sum += beatSimilarity(f, a, b);
+      ++n;
+    }
+    return n ? sum / n : -1;
+  };
+  const pair = (i: number, j: number) => (beatSim(i) + beatSim(j)) / 2;
+  const threshold = 0.6 * g.score;
+  const room = (dir: number) => {
+    // How far every occurrence can grow in this direction without touching another one.
+    const sorted = [...g.starts].sort((x, y) => x - y);
+    let r = SHIFT + 1;
+    for (let k = 0; k < sorted.length; ++k) {
+      const gap = dir < 0 ? sorted[k] - (k ? sorted[k - 1] + g.length : 0) : (k + 1 < sorted.length ? sorted[k + 1] : f.beats) - (sorted[k] + g.length);
+      r = Math.min(r, gap);
+    }
+    return Math.max(0, r);
+  };
+  let start = 0;
+  let end = g.length;
+  // Grow outwards while the two beats just outside still sound alike, else trim the edge while
+  // the two beats just inside do not.
+  for (let r = room(-1); r > 0 && pair(start - 1, start - 2) >= threshold; --r) --start;
+  if (start === 0) while (end - start > 4 && pair(start, start + 1) < threshold) ++start;
+  for (let r = room(1); r > 0 && pair(end, end + 1) >= threshold; --r) ++end;
+  if (end === g.length) while (end - start > 4 && pair(end - 1, end - 2) < threshold) --end;
+  g.starts = g.starts.map((s) => s + start).sort((x, y) => x - y);
+  g.length = end - start;
 }

@@ -37,11 +37,28 @@ function features(beats: number, from: number, len: number, to: number): BeatFea
 describe('section detection', () => {
   const f = features(240, 12, 48, 112);
 
+  it('places repeats that are not a whole number of measures apart on the right beat', async () => {
+    const { findHierarchy } = await import('../src/analysis/structure');
+    // 48 beats repeated 102 beats later: half a measure off the 4-beat search grid.
+    const shifted = features(240, 12, 48, 114);
+    const best = findHierarchy(shifted).sort((p, q) => q.length - p.length)[0];
+    expect(best.starts[1] - best.starts[0]).toBe(102);
+    expect(best.starts[0]).toBeGreaterThanOrEqual(12);
+    expect(best.starts[0] + best.length).toBeLessThanOrEqual(60);
+  });
+
   it('finds a planted repeat', () => {
     const groups = findRepeats(f);
     expect(groups).toHaveLength(1);
     expect(groups[0].starts).toEqual([12, 112]);
     expect(groups[0].length).toBe(48);
+  });
+
+  it('keeps the better of two overlapping occurrences', async () => {
+    const { dropOverlaps } = await import('../src/analysis/structure');
+    const g = { length: 48, starts: [12, 100, 112], score: 1 };
+    dropOverlaps(f, g);
+    expect(g.starts).toEqual([12, 112]);
   });
 
   it('ranks the repeat first for find-similar', () => {
