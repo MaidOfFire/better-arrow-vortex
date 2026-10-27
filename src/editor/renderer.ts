@@ -789,10 +789,11 @@ export class Renderer {
     ctx.font = 'bold 10px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    sec.groups.forEach((g, gi) => {
+    // One column per nesting level: whole sections outermost, parts further in.
+    sec.ordered.forEach(({ group: g, depth }) => {
       const color = sec.colorOf(g);
       const active = g.id === sec.activeId;
-      const x = v.fieldLeft + 2 + (gi % 3) * 5;
+      const x = v.fieldLeft + 2 + Math.min(depth, 3) * 6;
       g.starts.forEach((start, k) => {
         const end = start + g.length;
         if (end < r0 || start > r1) return;
@@ -803,7 +804,9 @@ export class Renderer {
         ctx.fillRect(x, Math.min(ya, yb), active ? 4 : 3, Math.abs(yb - ya));
         ctx.fillRect(x, ya - 1, 10, 2);
         ctx.globalAlpha = 1;
-        ctx.fillText(`${sec.nameOf(g)}${k + 1}`, x + 6, ya + (v.reverse ? -8 : 8));
+        // Nested parts often start on the same row as their parent: stagger the labels.
+        const dy = 8 + Math.min(depth, 3) * 11;
+        ctx.fillText(`${sec.nameOf(g)}${k + 1}`, x + 6, ya + (v.reverse ? -dy : dy));
       });
     });
   }

@@ -42,6 +42,11 @@ You can also drag a song folder or files onto the window, or click **Try a demo 
   insert/delete beats, region to stop), tempo breakdown.
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),
+  at three scales so that repeats nest: whole sections, the parts that repeat inside them (e.g. a
+  chorus phrase) and smaller figures. The nesting follows from which occurrences contain which,
+  also for groups marked by hand, and names follow it (D → Da → Da1). The minimap has one lane per
+  level, the status bar shows the path (E1 › Ea1), and in side views `{` / `}` switch between
+  following whole sections and the parts inside them;
   and can be marked by hand (group from a Tab region, add the cursor position with Shift+A, or
   "find similar to selection"). Groups show as brackets beside the notes and on the minimap and
   are remembered per song in the browser; the minimap gives every group its own labelled lane

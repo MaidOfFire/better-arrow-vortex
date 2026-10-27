@@ -195,3 +195,62 @@ describe('side views', () => {
     expect(layout()).toEqual(['main:0*@0']);
   });
 });
+
+describe('nested sections', () => {
+  it('detects a section and the phrase repeating inside it', async () => {
+    const { findHierarchy } = await import('../src/analysis/structure');
+    // 240 beats of distinct random beats; the section [P Q P R] (4 x 16 beats) sits at 0 and 128.
+    const f = features(240, 0, 0, 0);
+    const copy = (from: number, to: number, len: number) => f.data.copyWithin(to * f.dims, from * f.dims, (from + len) * f.dims);
+    copy(0, 32, 16); // P again inside the section
+    copy(0, 128, 64); // the whole section again
+    const groups = findHierarchy(f).map((g) => `${g.length}@${g.starts.join(',')}`);
+    expect(groups).toContain('64@0,128');
+    expect(groups).toContain('16@0,32,128,160');
+  });
+
+  // 20 measures, the last one with a note so the chart is long enough.
+  const LONG = `#TITLE:Nested;#OFFSET:0;#BPMS:0=120;
+#NOTES:dance-single:me:Challenge:10::
+${Array.from({ length: 20 }, () => '0000\n0000\n0000\n0000').join('\n,\n')}
+,
+1000
+0000
+0000
+0000
+;`;
+
+  let ed: Editor;
+  beforeEach(() => {
+    localStorage.clear();
+    ed = new Editor();
+    ed.setSimfile(loadSm(LONG), 'nested.sm', new FileSource());
+    // Section: 4 measures at m0 and m8. Phrase: 1 measure at m0, m2, m8, m10 (inside both).
+    ed.setRegion(0, 768);
+    ed.sections.addOccurrence(ed.sections.newGroupFromRegion()!, 1536);
+    ed.setRegion(0, 192);
+    const phrase = ed.sections.newGroupFromRegion()!;
+    for (const m of [2, 8, 10]) ed.sections.addOccurrence(phrase, m * 192);
+    ed.clearSelection();
+    ed.sections.setActive(null);
+  });
+
+  it('nests groups by containment and names them along the tree', () => {
+    const sec = ed.sections;
+    expect(sec.ordered.map(({ group, depth }) => `${sec.nameOf(group)}:${depth}:${group.length}`)).toEqual(['A:0:768', 'Aa:1:192']);
+    expect(sec.pathAt(400).map((g) => sec.nameOf(g))).toEqual(['A', 'Aa']);
+    expect(sec.parentOf(sec.groups.find((g) => g.length === 192)!)?.length).toBe(768);
+  });
+
+  it('lets side views follow whole sections or the parts inside them', () => {
+    const sec = ed.sections;
+    ed.setCursorRow(400);
+    sec.toggleSideViews();
+    expect(sec.nameOf(sec.shownGroup!)).toBe('A');
+    sec.changeSideDepth(1);
+    expect(sec.nameOf(sec.shownGroup!)).toBe('Aa');
+    expect(sec.panes()!.map((p) => p.start)).toEqual([384, 0, 1536, 1920]);
+    sec.changeSideDepth(-1);
+    expect(sec.nameOf(sec.shownGroup!)).toBe('A');
+  });
+});

@@ -31,6 +31,14 @@ export interface Pane {
   main: boolean;
 }
 
+interface SectionTree {
+  parent: Map<number, SectionGroup | null>;
+  depth: Map<number, number>;
+  names: Map<number, string>;
+  /** Parents before their parts, siblings by position in the song. */
+  order: SectionGroup[];
+}
+
 export const SECTION_COLORS = ['#f2b134', '#4fc3f7', '#ef6f9b', '#9ccc65', '#b39ddb', '#ff8a65', '#4db6ac', '#e0e0e0'];
 
 export type CopyTransform = 'none' | MirrorMode;
@@ -67,13 +75,88 @@ export class SectionManager {
   constructor(private readonly ed: Editor) {}
 
   colorOf(g: SectionGroup): string {
-    return SECTION_COLORS[(this.groups.indexOf(g) + SECTION_COLORS.length) % SECTION_COLORS.length];
+    const i = this.tree().order.indexOf(g);
+    return SECTION_COLORS[(i + SECTION_COLORS.length) % SECTION_COLORS.length];
   }
 
   /** "A", "B", ... by position in the list. */
+  /** Tree name: top-level groups A, B, …; parts inside D are Da, Db, …; inside Da: Da1, Da2, … */
   nameOf(g: SectionGroup): string {
-    const i = this.groups.indexOf(g);
-    return i < 26 ? String.fromCharCode(65 + i) : `G${i + 1}`;
+    return this.tree().names.get(g.id) ?? '?';
+  }
+
+  /** 0 for top-level groups, 1 for parts inside them, and so on. */
+  depthOf(g: SectionGroup): number {
+    return this.tree().depth.get(g.id) ?? 0;
+  }
+
+  parentOf(g: SectionGroup): SectionGroup | null {
+    return this.tree().parent.get(g.id) ?? null;
+  }
+
+  /** Groups in tree order (each parent followed by its parts), with depths. */
+  get ordered(): { group: SectionGroup; depth: number }[] {
+    const t = this.tree();
+    return t.order.map((group) => ({ group, depth: t.depth.get(group.id) ?? 0 }));
+  }
+
+  get maxDepth(): number {
+    let d = 0;
+    for (const v of this.tree().depth.values()) d = Math.max(d, v);
+    return d;
+  }
+
+  private treeCache: { version: number; groups: SectionGroup[]; value: SectionTree } | null = null;
+
+  /**
+   * The nesting of groups, derived from their occurrences: a group's parent is the smallest
+   * group at least 1.5 times as long that contains the most of its occurrences.
+   */
+  private tree(): SectionTree {
+    const c = this.treeCache;
+    if (c && c.version === this.version && c.groups === this.groups) return c.value;
+    const groups = this.groups;
+    const inside = (child: SectionGroup, start: number, parent: SectionGroup) =>
+      parent.starts.some((p) => Math.min(start + child.length, p + parent.length) - Math.max(start, p) >= 0.9 * child.length);
+    const parent = new Map<number, SectionGroup | null>();
+    for (const g of groups) {
+      let best: SectionGroup | null = null;
+      let bestCount = 0;
+      for (const p of groups) {
+        if (p === g || p.length < 1.5 * g.length) continue;
+        const count = g.starts.filter((st) => inside(g, st, p)).length;
+        if (count > bestCount || (count === bestCount && count > 0 && best && p.length < best.length)) {
+          best = p;
+          bestCount = count;
+        }
+      }
+      parent.set(g.id, best);
+    }
+    const children = new Map<number | null, SectionGroup[]>();
+    for (const g of groups) {
+      const key = parent.get(g.id)?.id ?? null;
+      let list = children.get(key);
+      if (!list) children.set(key, (list = []));
+      list.push(g);
+    }
+    for (const list of children.values()) list.sort((a, b) => a.starts[0] - b.starts[0] || b.length - a.length);
+    const depth = new Map<number, number>();
+    const names = new Map<number, string>();
+    const order: SectionGroup[] = [];
+    const visit = (g: SectionGroup, d: number, name: string) => {
+      depth.set(g.id, d);
+      names.set(g.id, name);
+      order.push(g);
+      (children.get(g.id) ?? []).forEach((child, i) => {
+        // Letters and digits alternate by depth: D → Da → Da1 → Da1a …
+        const suffix = d % 2 === 0 ? String.fromCharCode(97 + (i % 26)) : String(i + 1);
+        visit(child, d + 1, name + suffix);
+      });
+    };
+    (children.get(null) ?? []).forEach((g, i) => visit(g, 0, i < 26 ? String.fromCharCode(65 + i) : `Z${i - 25}`));
+    const value: SectionTree = { parent, depth, names, order };
+    this.treeCache = { version: this.version, groups, value };
+    return value;
   }
 
   get active(): SectionGroup | null {
@@ -187,7 +270,8 @@ export class SectionManager {
       this.features = features;
       this.featuresTiming = timing;
       this.status = 'ready';
-      if (replaceAuto || this.groups.length === 0) {
+      // Automatic groups are refreshed (detection may have improved); hand-made ones are kept.
+      if (replaceAuto || this.groups.every((g) => g.auto)) {
         this.groups = this.groups.filter((g) => !g.auto);
         for (const r of groups) {
           this.groups.push({
@@ -384,10 +468,43 @@ export class SectionManager {
     return g.starts.findIndex((s) => row >= s && row < s + g.length);
   }
 
-  /** Group with an occurrence at `row`: the active one if possible, else the shortest. */
+  /** Groups with an occurrence at `row`, outermost first (one chain from the tree when possible). */
+  pathAt(row: number): SectionGroup[] {
+    const inside = this.groups.filter((g) => this.occurrenceAt(g, row) >= 0);
+    return inside.sort((a, b) => this.depthOf(a) - this.depthOf(b) || b.length - a.length);
+  }
+
+  /**
+   * The group the side views show at `row`: the one at the chosen level (`sideDepth`) if the
+   * row is in one, else the nearest coarser one, else the coarsest available.
+   */
   groupAt(row: number): SectionGroup | null {
-    const inside = this.groups.filter((g) => g.starts.length >= 2 && this.occurrenceAt(g, row) >= 0);
-    return inside.find((g) => g.id === this.activeId) ?? [...inside].sort((a, b) => a.length - b.length)[0] ?? null;
+    const path = this.pathAt(row).filter((g) => g.starts.length >= 2);
+    if (!path.length) return null;
+    const want = this.ed.settings.sideDepth;
+    const atOrAbove = path.filter((g) => this.depthOf(g) <= want);
+    const pick = atOrAbove.length ? atOrAbove : path;
+    const depth = atOrAbove.length ? Math.max(...atOrAbove.map((g) => this.depthOf(g))) : this.depthOf(path[0]);
+    const same = pick.filter((g) => this.depthOf(g) === depth);
+    return same.find((g) => g.id === this.activeId) ?? [...same].sort((a, b) => a.length - b.length)[0];
+  }
+
+  /** `{` / `}`: side views follow coarser or finer sections. */
+  changeSideDepth(step: number): void {
+    const s = this.ed.settings;
+    const next = Math.max(0, Math.min(this.maxDepth, s.sideDepth + step));
+    if (next === s.sideDepth) {
+      this.ed.hud(step < 0 ? 'Already at the coarsest level.' : 'No finer level here.');
+      return;
+    }
+    s.sideDepth = next;
+    this.ed.saveSettings();
+    this.focusMain();
+    this.side.groupId = null; // choose again at the new level
+    this.followed.row = -1;
+    this.follow();
+    this.ed.hud(`Side views follow level ${next + 1} of ${this.maxDepth + 1}${next === 0 ? ' (whole sections)' : ' (parts inside sections)'}.`);
+    this.ed.changed();
   }
 
   get shownGroup(): SectionGroup | null {
@@ -417,8 +534,9 @@ export class SectionManager {
     if (row === this.followed.row && this.version === this.followed.version) return;
     this.followed = { row, version: this.version };
     const current = this.shownGroup;
+    const target = this.groupAt(row);
     const occ = current ? this.occurrenceAt(current, row) : -1;
-    if (current && occ >= 0) {
+    if (current && occ >= 0 && (!target || this.depthOf(target) === this.depthOf(current))) {
       if (occ !== this.side.occ) {
         // Into another occurrence of the same group (e.g. back-to-back repeats).
         if (this.side.focus === occ) this.focusMain();
@@ -427,7 +545,7 @@ export class SectionManager {
       }
       return;
     }
-    const next = this.groupAt(row);
+    const next = target;
     if ((next?.id ?? null) === this.side.groupId) return;
     this.focusMain();
     const mainRow = this.ed.view.cursorRow;

@@ -671,7 +671,8 @@ class SectionsDialog extends Dialog {
     );
 
     const list = h('div', { class: 'section-list' });
-    for (const g of sec.groups) list.append(this.groupRow(g));
+    // Tree order: each section followed by the parts that repeat inside it.
+    for (const { group, depth } of sec.ordered) list.append(this.groupRow(group, depth));
     if (!sec.groups.length) list.append(h('p', { class: 'hint' }, 'No groups yet.'));
     this.body.append(list);
 
@@ -729,7 +730,7 @@ class SectionsDialog extends Dialog {
     );
   }
 
-  private groupRow(g: SectionGroup): HTMLElement {
+  private groupRow(g: SectionGroup, depth: number): HTMLElement {
     const ed = this.ed;
     const sec = ed.sections;
     const active = g.id === sec.activeId;
@@ -737,6 +738,7 @@ class SectionsDialog extends Dialog {
     const head = h(
       'div',
       { class: `group-head${active ? ' active' : ''}`, title: 'Show occurrences' },
+      depth ? h('span', { class: 'tree-indent', style: `width:${depth * 14}px` }, '└') : '',
       h('span', { class: 'swatch', style: `background:${sec.colorOf(g)}` }),
       h('b', {}, sec.nameOf(g)),
       h('span', {}, ` ${measures} measures ×${g.starts.length}`),

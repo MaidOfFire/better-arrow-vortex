@@ -43,6 +43,8 @@ export interface Settings {
   sectionDiffs: boolean;
   /** Show the other occurrences of the current section next to the notefield. */
   sideViews: boolean;
+  /** Which level of nested sections the side views follow (0 = whole sections). */
+  sideDepth: number;
   /** Write section groups into the simfile as a comment line when saving. */
   sectionsInFile: boolean;
 
@@ -89,6 +91,7 @@ const DEFAULTS: Settings = {
   sectionDiffs: true,
   sectionsInFile: true,
   sideViews: false,
+  sideDepth: 0,
 
   jumpToNextNote: false,
   undoRedoJump: true,

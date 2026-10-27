@@ -12,8 +12,10 @@ const ROLL_COLOR = 'rgb(96,96,128)';
 const MINE_COLOR = 'rgb(192,192,192)';
 
 const NOTES_W = 24;
-const LANE_W = 9;
+const LANE_W = 11;
 const LABEL_H = 14;
+/** Deeper levels share the last lane. */
+const MAX_LANES = 3;
 
 interface Rect {
   x: number;
@@ -31,10 +33,17 @@ export class Minimap {
     private readonly quantColors: () => string[],
   ) {}
 
-  /** Groups that get a lane (none when section brackets are hidden). */
-  private lanes(): SectionGroup[] {
+  /** One lane per nesting level, each holding that level's groups (none when brackets are hidden). */
+  private lanes(): SectionGroup[][] {
     const ed = this.editor;
-    return ed.settings.showSections ? ed.sections.groups : [];
+    if (!ed.settings.showSections || !ed.sections.groups.length) return [];
+    const lanes: SectionGroup[][] = [];
+    for (const { group, depth } of ed.sections.ordered) {
+      const i = Math.min(depth, MAX_LANES - 1);
+      while (lanes.length <= i) lanes.push([]);
+      lanes[i].push(group);
+    }
+    return lanes;
   }
 
   private lanesWidth(): number {
@@ -71,24 +80,25 @@ export class Minimap {
   laneAt(x: number, y: number): { group: SectionGroup; index: number } | null {
     const lanes = this.lanes();
     if (!lanes.length || !this.contains(x, y)) return null;
-    const i = Math.floor((x - this.rect().x - 2) / LANE_W);
-    const g = lanes[i];
-    if (!g) return null;
+    const lane = lanes[Math.floor((x - this.rect().x - 2) / LANE_W)];
+    if (!lane) return null;
     const m = this.mapRect();
-    if (y < m.y) return { group: g, index: 0 }; // the label above the lane
     const v = this.editor.view;
-    let best = -1;
-    let bestDist = 4;
-    g.starts.forEach((start, k) => {
-      const y0 = this.offsetToY(m, v.rowToOffset(start));
-      const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
-      const d = y < Math.min(y0, y1) ? Math.min(y0, y1) - y : y > Math.max(y0, y1) ? y - Math.max(y0, y1) : 0;
-      if (d < bestDist) {
-        bestDist = d;
-        best = k;
-      }
-    });
-    return best >= 0 ? { group: g, index: best } : null;
+    // The closest occurrence in this lane, preferring the shortest group when several overlap.
+    let best: { group: SectionGroup; index: number } | null = null;
+    let bestKey = [4, Infinity];
+    for (const g of lane) {
+      g.starts.forEach((start, k) => {
+        const y0 = this.offsetToY(m, v.rowToOffset(start));
+        const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
+        const d = y < Math.min(y0, y1) ? Math.min(y0, y1) - y : y > Math.max(y0, y1) ? y - Math.max(y0, y1) : 0;
+        if (d < bestKey[0] || (d === bestKey[0] && g.length < bestKey[1])) {
+          bestKey = [d, g.length];
+          best = { group: g, index: k };
+        }
+      });
+    }
+    return best;
   }
 
   private range(): [number, number] {
@@ -152,7 +162,10 @@ export class Minimap {
     this.drawViewRange(ctx, m, r.x, r.w);
   }
 
-  /** One lane per section group, labelled with its letter. */
+  /**
+   * One lane per nesting level (1 = whole sections, 2 = parts inside them, …); each block is an
+   * occurrence in its group's colour, the active group's blocks outlined in white.
+   */
   private drawLanes(ctx: CanvasRenderingContext2D, m: Rect): void {
     const lanes = this.lanes();
     if (!lanes.length) return;
@@ -165,28 +178,32 @@ export class Minimap {
     ctx.font = 'bold 10px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    lanes.forEach((g, i) => {
+    lanes.forEach((lane, i) => {
       const x = this.laneX(i);
       const w = LANE_W - 2;
-      const color = sec.colorOf(g);
-      const active = g.id === sec.activeId;
-      ctx.fillStyle = active ? '#2a2a2a' : '#181818';
+      ctx.fillStyle = '#181818';
       ctx.fillRect(x, m.y, w, m.h);
-      ctx.globalAlpha = active ? 1 : 0.75;
-      ctx.fillStyle = color;
-      for (const start of g.starts) {
-        const y0 = this.offsetToY(m, v.rowToOffset(start));
-        const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
-        ctx.fillRect(x, Math.min(y0, y1), w, Math.max(2, Math.abs(y1 - y0)));
+      // Longer groups first so shorter, overlapping ones stay visible on top.
+      for (const g of [...lane].sort((a, b) => b.length - a.length)) {
+        const active = g.id === sec.activeId;
+        for (const start of g.starts) {
+          const y0 = this.offsetToY(m, v.rowToOffset(start));
+          const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
+          const top = Math.min(y0, y1);
+          const h = Math.max(2, Math.abs(y1 - y0));
+          ctx.globalAlpha = active ? 1 : 0.8;
+          ctx.fillStyle = sec.colorOf(g);
+          ctx.fillRect(x, top, w, h);
+          ctx.globalAlpha = 1;
+          if (active) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x - 0.5, top - 0.5, w + 1, h + 1);
+          }
+        }
       }
-      ctx.globalAlpha = 1;
-      if (active) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x - 0.5, m.y - 0.5, w + 1, m.h + 1);
-      }
-      ctx.fillStyle = color;
-      ctx.fillText(sec.nameOf(g), x + w / 2, r.y - LABEL_H / 2);
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(String(i + 1), x + w / 2, r.y - LABEL_H / 2);
     });
   }
 

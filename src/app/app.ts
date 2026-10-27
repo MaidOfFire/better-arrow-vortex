@@ -216,9 +216,11 @@ export class App implements ActionHost, DialogHost {
     const sec = this.editor.sections;
     const on = sec.sideViewsOn;
     const g = on ? sec.shownGroup : null;
-    const label = !on ? 'Side views' : g ? `Side views: ${sec.nameOf(g)}${sec.side.occ + 1}` : 'Side views: —';
+    const levels = sec.maxDepth + 1;
+    const level = levels > 1 ? ` · level ${Math.min(this.editor.settings.sideDepth, sec.maxDepth) + 1}/${levels}` : '';
+    const label = !on ? 'Side views' : g ? `Side views: ${sec.nameOf(g)}${sec.side.occ + 1}${level}` : `Side views: —${level}`;
     const title = on
-      ? 'Showing the other occurrences of the section the cursor is in. Click to turn off (Shift+V).'
+      ? 'Showing the other occurrences of the section the cursor is in. { and } switch between whole sections and the parts inside them. Click to turn off (Shift+V).'
       : 'Show the other occurrences of the section the cursor is in, next to it (Shift+V).';
     const state = `${label}|${on}|${this.editor.isOpen}`;
     if (state === this.sideViewsState) return;

@@ -172,7 +172,7 @@ const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, 
  * Runs of similar windows at the same lag become pairs; pairs sharing an occurrence merge
  * into groups.
  */
-export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 32, maxGroups = 16): RepeatGroup[] {
+export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 32, maxGroups = 16, maxLength = Infinity): RepeatGroup[] {
   const starts: number[] = [];
   for (let i = 0; i + window <= f.beats; i += step) starts.push(i);
   const pairs: { a: number; b: number; s: number }[] = [];
@@ -184,7 +184,9 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
   }
   if (!pairs.length) return [];
   const sorted = pairs.map((p) => p.s).sort((x, y) => x - y);
-  const threshold = Math.max(0.3, sorted[Math.floor(sorted.length * 0.99)]);
+  // Strong pairs: the top 1%, but never stricter than 0.8 (when repeats are most of that top 1%,
+  // the percentile would land on their own score and cut them apart).
+  const threshold = Math.max(0.3, Math.min(0.8, sorted[Math.floor(sorted.length * 0.99)]));
 
   // Runs of strong windows along each lag.
   const byLag = new Map<number, { a: number; s: number }[]>();
@@ -209,7 +211,7 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
       while (end - a > step && windowSimilarity(f, a, a + lag, step) < threshold) a += step;
       while (end - a > step && windowSimilarity(f, end - step, end - step + lag, step) < threshold) end -= step;
       const length = end - a;
-      if (length >= minLength) {
+      if (length >= minLength && length <= maxLength) {
         runs.push({ a, b: a + lag, length, score: seg.reduce((t, p) => t + p.s, 0) / seg.length });
       }
       first = k;
@@ -259,4 +261,65 @@ export function findRepeats(f: BeatFeatures, window = 16, step = 4, minLength = 
     for (const s of g.starts) covered.fill(1, s, Math.min(f.beats, s + g.length));
   }
   return kept.sort((p, q) => p.starts[0] - q.starts[0]);
+}
+
+/**
+ * Repeats at three scales, pooled so that groups can nest: whole sections, then parts of up to
+ * 8 measures, then figures of up to 4 measures. The finer scales are capped in length, so they
+ * find what repeats inside sections instead of finding the sections again. A finer group that
+ * describes the same stretches as one already found (similar length, mostly the same beats) is
+ * dropped. The nesting itself is derived later from which occurrences contain which.
+ */
+export function findHierarchy(f: BeatFeatures, maxGroups = 24): RepeatGroup[] {
+  const scales = [
+    findRepeats(f, 16, 4, 32, 16),
+    findRepeats(f, 8, 4, 16, 16, 32),
+    findRepeats(f, 4, 2, 8, 16, 16),
+  ];
+  const coverage = (g: RepeatGroup) => {
+    const marks = new Uint8Array(f.beats);
+    for (const s of g.starts) marks.fill(1, s, Math.min(f.beats, s + g.length));
+    return marks;
+  };
+  const sameRepeat = (a: RepeatGroup, b: RepeatGroup) => {
+    if (Math.max(a.length, b.length) >= 1.5 * Math.min(a.length, b.length)) return false;
+    const ca = coverage(a);
+    const cb = coverage(b);
+    let both = 0;
+    let na = 0;
+    let nb = 0;
+    for (let i = 0; i < f.beats; ++i) {
+      na += ca[i];
+      nb += cb[i];
+      both += ca[i] & cb[i];
+    }
+    return both >= 0.6 * Math.min(na, nb);
+  };
+  const pooled: RepeatGroup[] = [];
+  for (const scale of scales) {
+    // Strongest first, so the cap below keeps the clearest repeats of each scale.
+    for (const g of [...scale].sort((p, q) => q.score * q.length * q.starts.length - p.score * p.length * p.starts.length)) {
+      if (pooled.length >= maxGroups) break;
+      if (!pooled.some((p) => sameRepeat(p, g))) pooled.push(g);
+    }
+  }
+  // Equal-length groups whose occurrences sound alike are one group (e.g. a chorus phrase that
+  // comes back in the final chorus).
+  for (let i = 0; i < pooled.length; ++i) {
+    for (let j = i + 1; j < pooled.length; ++j) {
+      const a = pooled[i];
+      const b = pooled[j];
+      if (Math.abs(a.length - b.length) > 1) continue;
+      const len = Math.min(a.length, b.length);
+      let best = -1;
+      for (const sa of a.starts) for (const sb of b.starts) best = Math.max(best, windowSimilarity(f, sa, sb, len));
+      if (best < 0.9 * Math.min(a.score, b.score)) continue;
+      for (const sb of b.starts) if (a.starts.every((sa) => Math.abs(sa - sb) >= len)) a.starts.push(sb);
+      a.starts.sort((x, y) => x - y);
+      a.length = len;
+      a.score = Math.min(a.score, b.score);
+      pooled.splice(j--, 1);
+    }
+  }
+  return pooled.sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
 }

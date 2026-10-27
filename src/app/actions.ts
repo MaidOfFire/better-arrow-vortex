@@ -163,6 +163,8 @@ export function createActions(host: ActionHost): Map<string, Action> {
   }, { enabled: () => ed.region !== null && hasMusic() });
   const hasSideViews = () => (sec.panes()?.length ?? 0) > 1;
   add('sections.compare', 'Side views', ['shift+v'], () => sec.toggleSideViews(), { enabled: hasSim, checked: () => sec.sideViewsOn });
+  add('sections.coarser', 'Follow bigger sections', ['shift+['], () => sec.changeSideDepth(-1), { enabled: () => sec.sideViewsOn && s.sideDepth > 0 });
+  add('sections.finer', 'Follow smaller parts', ['shift+]'], () => sec.changeSideDepth(1), { enabled: () => sec.sideViewsOn && s.sideDepth < sec.maxDepth });
   add('sections.prevPane', 'Edit the pane to the left', ['['], () => sec.focusNext(-1), { enabled: hasSideViews });
   add('sections.nextPane', 'Edit the pane to the right', [']'], () => sec.focusNext(1), { enabled: hasSideViews });
   add('sections.ghosts', 'Ghost notes from other panes', [], toggle('sectionGhosts', 'Ghost notes'), { checked: () => s.sectionGhosts });
@@ -414,6 +416,8 @@ export const MENU: { label: string; items: MenuEntry[] }[] = [
       'sections.addCursor',
       '-',
       'sections.compare',
+      'sections.coarser',
+      'sections.finer',
       'sections.prevPane',
       'sections.nextPane',
       '-',

@@ -27,8 +27,8 @@ export class Statusbar {
       if (st.time) parts.push(['Time', formatTime(v.cursorTime)]);
       if (st.section) {
         const sec = ed.sections;
-        const g = sec.groupAt(v.cursorRow);
-        if (g) parts.push(['Section', `${sec.nameOf(g)}${sec.occurrenceAt(g, v.cursorRow) + 1} of ${g.starts.length}`]);
+        const path = sec.pathAt(v.cursorRow);
+        if (path.length) parts.push(['Section', path.map((g) => `${sec.nameOf(g)}${sec.occurrenceAt(g, v.cursorRow) + 1}`).join(' › ')]);
       }
       if (st.hover && v.hoverRow >= 0) {
         parts.push(['Mouse', `row ${v.hoverRow}, beat ${(v.hoverRow / ROWS_PER_BEAT).toFixed(3)}`]);
