@@ -1,0 +1,9 @@
+DivideByZero noteskin (StepMania 5 USWN edition), consolidated by Jousway.
+Only the images used by the editor are kept here; files were renamed:
+  tap-note.png  <- _Down Tap Note 1x8.png
+  receptor.png  <- _Down Go Receptor Go 2x1.png
+  mine.png      <- _Down Tap Mine 8x1.png
+  hold-body.png <- Down Hold Body Active.png
+  hold-cap.png  <- Down Hold BottomCap Active.png
+  roll-body.png <- Down Roll Body active.png
+  roll-cap.png  <- Down Roll BottomCap active.png
