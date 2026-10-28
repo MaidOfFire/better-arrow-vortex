@@ -145,41 +145,6 @@ canvas.notefield {
   outline: none;
 }
 
-/* Chord density graph (after Etterna's Til' Death theme) ------------------------------------ */
-
-.chord-graph {
-  position: relative;
-  flex: none;
-  height: 26px;
-  padding: 2px 8px;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-}
-
-.chord-graph-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-}
-
-.chord-graph-tip {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  padding: 2px 7px;
-  background: rgba(24, 24, 24, 0.94);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  font-size: 12px;
-  white-space: pre;
-  pointer-events: none;
-}
-
-.chord-graph[hidden],
-.chord-graph-tip[hidden] {
-  display: none;
-}
-
 .statusbar {
   flex: none;
   display: flex;
@@ -297,6 +262,81 @@ canvas.notefield {
   font-size: 16px;
   cursor: pointer;
   padding: 0 4px;
+}
+
+/* NPS graph window (chord density, after Etterna's Til' Death theme) ------------------------- */
+
+.dialog.nps-window {
+  width: 50%;
+  min-width: 320px;
+  min-height: 90px;
+  max-width: 100%;
+  resize: both;
+  overflow: hidden;
+}
+
+.dialog.nps-window[hidden] {
+  display: none;
+}
+
+.nps-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nps-pin {
+  display: flex;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transform: rotate(45deg);
+}
+
+.nps-pin:hover {
+  color: var(--text);
+}
+
+.nps-pin.pinned {
+  color: var(--accent);
+  transform: none;
+}
+
+.nps-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px 4px;
+}
+
+/* The canvas fills whatever room the window has, so the graph grows when it is resized. */
+.nps-plot {
+  position: relative;
+  flex: 1;
+  min-height: 24px;
+}
+
+.nps-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.nps-info {
+  flex: none;
+  height: 18px;
+  padding-right: 12px;
+  padding-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dlg-body {

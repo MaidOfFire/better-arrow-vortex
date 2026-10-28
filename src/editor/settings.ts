@@ -21,8 +21,16 @@ export interface Settings {
   showTempoBoxes: boolean;
   showMinimap: boolean;
   minimapMode: 'notes' | 'density';
-  /** Etterna-style notes per second graph, split by chord size, along the bottom (off until asked for). */
+  /** Etterna-style notes per second graph, split by chord size, in a floating window. */
   showChordGraph: boolean;
+  /** Keep the graph window open while editing (and across sessions); unpinned it closes on an outside click. */
+  chordGraphPinned: boolean;
+  /** Graph window position, as a fraction of the room left around it (0.5, 1 = bottom centre). */
+  chordGraphX: number;
+  chordGraphY: number;
+  /** Graph window size: width as a fraction of the editor, height in pixels. */
+  chordGraphW: number;
+  chordGraphH: number;
   /** An image skin id (see IMAGE_SKINS) or a built-in drawn skin. */
   noteskin: 'dividebyzero' | 'arrows' | 'bars';
   /** Solid hold/roll bodies on image skins whose own hold art is faint. */
@@ -78,6 +86,11 @@ const DEFAULTS: Settings = {
   showMinimap: true,
   minimapMode: 'notes',
   showChordGraph: false,
+  chordGraphPinned: false,
+  chordGraphX: 0.5,
+  chordGraphY: 1,
+  chordGraphW: 0.5,
+  chordGraphH: 124,
   noteskin: 'dividebyzero',
   boldHolds: true,
   audioView: 'onsets',

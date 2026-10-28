@@ -61,12 +61,12 @@ export class App implements ActionHost, DialogHost {
     this.sideViewsButton.className = 'toolbar-btn';
     this.graphButton = button('NPS graph', () => this.run(this.actions.get('view.chordGraph')!));
     this.graphButton.className = 'toolbar-btn';
-    this.graphButton.title = 'Notes per second by chord size, one bar per second, along the bottom (Shift+G).';
+    this.graphButton.title = 'Notes per second by chord size, one bar per second, in a window you can pin (Shift+G).';
     this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.graphButton, this.sideViewsButton);
     this.statusbar = new Statusbar(ed);
     this.canvas = h('canvas', { class: 'notefield', tabindex: 0 });
-    this.chordGraph = new ChordGraph(ed, () => this.canvas.focus());
     this.layer = h('div', { class: 'dialog-layer' });
+    this.chordGraph = new ChordGraph(ed, this.layer, () => this.canvas.focus());
     this.welcome = h(
       'div',
       { class: 'welcome' },
@@ -82,7 +82,7 @@ export class App implements ActionHost, DialogHost {
       h('p', { class: 'hint' }, 'Press F1 for shortcuts. Number keys place notes, arrow keys move the cursor and change the snap, space plays.'),
     );
     const main = h('div', { class: 'main' }, this.canvas, this.hudView.el, this.welcome, this.layer);
-    root.append(this.menubar.el, main, this.chordGraph.el, this.statusbar.el);
+    root.append(this.menubar.el, main, this.statusbar.el);
     this.renderer = new Renderer(this.canvas, ed);
 
     new ResizeObserver(() => this.renderer.resize(main.clientWidth, main.clientHeight)).observe(main);

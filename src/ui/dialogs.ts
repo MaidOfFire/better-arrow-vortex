@@ -66,7 +66,8 @@ export abstract class Dialog {
   }
 }
 
-function makeDraggable(el: HTMLElement, handle: HTMLElement): void {
+/** Lets `handle` move `el` inside its parent; `onDrop` runs when the mouse is released. */
+export function makeDraggable(el: HTMLElement, handle: HTMLElement, onDrop?: () => void): void {
   handle.addEventListener('mousedown', (e) => {
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
@@ -80,6 +81,7 @@ function makeDraggable(el: HTMLElement, handle: HTMLElement): void {
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      onDrop?.();
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);

@@ -32,12 +32,14 @@ You can also drag a song folder or files onto the window, or click **Try a demo 
   an onset strip beside the notes (attack strength in low / mid / high bands; View > Audio view
   can switch back to the ArrowVortex waveform), beat lines,
   measure numbers, stop/delay/warp shading, tempo boxes and a minimap (notes or density).
-- NPS graph (button at the top right, Shift+G or View > Show NPS graph; off by default): a thin
-  chord density strip along the bottom, after Etterna's Til' Death theme. One bar per second, as
-  tall as its notes per second, shaded darker for notes in bigger chords (single, jump, hand,
-  quad; stacked, so every chord size shows), mines in red and a red line at 70% of the peak NPS.
-  It marks the cursor and the stretch on screen; hover for the counts of that second, click or
-  drag to jump there.
+- NPS graph (button at the top right, Shift+G or View > Show NPS graph): a chord density graph
+  after Etterna's Til' Death theme, in a window half as wide as the editor that can be moved by
+  its title and resized from its corner. One bar per second, as tall as its notes per second,
+  shaded darker for notes in bigger chords (single, jump, hand, quad; stacked, so every chord
+  size shows), mines in red and a red line at 70% of the peak NPS. It marks the cursor and the
+  stretch on screen, and the line below names the chords in the second under the mouse (or the
+  cursor); click or drag to jump there. Unpinned, the window closes on a click elsewhere; pinned,
+  it stays open while you edit and comes back next time, with its size and place.
 - Placing notes ArrowVortex-style: number keys place/remove, hold the key and move for holds,
   Shift for mines, Alt for the right half of wide styles, record live while playing.
 - Selection by drag box (Shift adds, Alt removes), region select (Tab), select by type or
