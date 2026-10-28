@@ -21,6 +21,8 @@ export interface Settings {
   showTempoBoxes: boolean;
   showMinimap: boolean;
   minimapMode: 'notes' | 'density';
+  /** Etterna-style notes per second graph, split by chord size, along the bottom. */
+  showChordGraph: boolean;
   /** An image skin id (see IMAGE_SKINS) or a built-in drawn skin. */
   noteskin: 'dividebyzero' | 'arrows' | 'bars';
   /** Solid hold/roll bodies on image skins whose own hold art is faint. */
@@ -75,6 +77,7 @@ const DEFAULTS: Settings = {
   showTempoBoxes: true,
   showMinimap: true,
   minimapMode: 'notes',
+  showChordGraph: true,
   noteskin: 'dividebyzero',
   boldHolds: true,
   audioView: 'onsets',

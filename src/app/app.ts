@@ -13,6 +13,7 @@ import {
 import { Renderer } from '../editor/renderer';
 import { loadSimfile } from '../model/simfileIO';
 import { ROWS_PER_BEAT } from '../model/types';
+import { ChordGraph } from '../ui/chordGraph';
 import { Dialog, SegmentDialog, createDialog, type DialogHost } from '../ui/dialogs';
 import { button, h } from '../ui/dom';
 import { Hud } from '../ui/hud';
@@ -37,6 +38,7 @@ export class App implements ActionHost, DialogHost {
   private readonly renderer: Renderer;
   private readonly menubar: Menubar;
   private readonly statusbar: Statusbar;
+  private readonly chordGraph: ChordGraph;
   private readonly hudView = new Hud();
   private readonly welcome: HTMLElement;
   private readonly sideViewsButton: HTMLButtonElement;
@@ -59,6 +61,7 @@ export class App implements ActionHost, DialogHost {
     this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.sideViewsButton);
     this.statusbar = new Statusbar(ed);
     this.canvas = h('canvas', { class: 'notefield', tabindex: 0 });
+    this.chordGraph = new ChordGraph(ed, () => this.canvas.focus());
     this.layer = h('div', { class: 'dialog-layer' });
     this.welcome = h(
       'div',
@@ -75,7 +78,7 @@ export class App implements ActionHost, DialogHost {
       h('p', { class: 'hint' }, 'Press F1 for shortcuts. Number keys place notes, arrow keys move the cursor and change the snap, space plays.'),
     );
     const main = h('div', { class: 'main' }, this.canvas, this.hudView.el, this.welcome, this.layer);
-    root.append(this.menubar.el, main, this.statusbar.el);
+    root.append(this.menubar.el, main, this.chordGraph.el, this.statusbar.el);
     this.renderer = new Renderer(this.canvas, ed);
 
     new ResizeObserver(() => this.renderer.resize(main.clientWidth, main.clientHeight)).observe(main);
@@ -205,6 +208,7 @@ export class App implements ActionHost, DialogHost {
     if (ed.needsRender) {
       ed.needsRender = false;
       this.renderer.draw();
+      this.chordGraph.update();
       this.statusbar.update();
       this.updateSideViewsButton();
     }

@@ -217,6 +217,7 @@ export function createActions(host: ActionHost): Map<string, Action> {
   add('view.tempoBoxes', 'Show tempo boxes', [], toggle('showTempoBoxes', 'Tempo boxes'), { checked: () => s.showTempoBoxes });
   add('view.notes', 'Show notes', [], toggle('showNotes', 'Notes'), { checked: () => s.showNotes });
   add('view.minimap', 'Show minimap', [], toggle('showMinimap', 'Minimap'), { checked: () => s.showMinimap });
+  add('view.chordGraph', 'Show chord density graph', [], toggle('showChordGraph', 'Chord density graph'), { checked: () => s.showChordGraph });
   add('view.reverse', 'Reverse scroll', [], () => {
     v.reverse = !v.reverse;
     viewChanged(`Reverse scroll: ${v.reverse ? 'on' : 'off'}`);
@@ -451,6 +452,7 @@ export const MENU: { label: string; items: MenuEntry[] }[] = [
       'view.tempoBoxes',
       'view.notes',
       'view.minimap',
+      'view.chordGraph',
       '-',
       'view.reverse',
       '-',

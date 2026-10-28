@@ -32,6 +32,11 @@ You can also drag a song folder or files onto the window, or click **Try a demo 
   an onset strip beside the notes (attack strength in low / mid / high bands; View > Audio view
   can switch back to the ArrowVortex waveform), beat lines,
   measure numbers, stop/delay/warp shading, tempo boxes and a minimap (notes or density).
+- Chord density graph along the bottom, after Etterna's Til' Death theme: one bar per second, as
+  tall as its notes per second, shaded darker for notes in bigger chords (single, jump, hand,
+  quad; stacked, so every chord size shows), mines in red and a red line at 70% of the peak NPS.
+  It marks the cursor and the stretch on screen; hover for the counts of that second, click or
+  drag to jump there (View > Show chord density graph).
 - Placing notes ArrowVortex-style: number keys place/remove, hold the key and move for holds,
   Shift for mines, Alt for the right half of wide styles, record live while playing.
 - Selection by drag box (Shift adds, Alt removes), region select (Tab), select by type or

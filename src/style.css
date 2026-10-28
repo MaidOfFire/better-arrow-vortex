@@ -145,6 +145,41 @@ canvas.notefield {
   outline: none;
 }
 
+/* Chord density graph (after Etterna's Til' Death theme) ------------------------------------ */
+
+.chord-graph {
+  position: relative;
+  flex: none;
+  height: 48px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.chord-graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.chord-graph-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  padding: 2px 7px;
+  background: rgba(24, 24, 24, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.chord-graph[hidden],
+.chord-graph-tip[hidden] {
+  display: none;
+}
+
 .statusbar {
   flex: none;
   display: flex;
