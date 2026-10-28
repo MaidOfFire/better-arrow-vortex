@@ -1036,6 +1036,16 @@ export class Editor {
     return shift;
   }
 
+  /** Sets the offset and every BPM marker's value at once (their beats stay), as one undo step. */
+  setOffsetAndBpms(offset: number, bpms: readonly number[], description = 'Fix sync'): void {
+    this.editTiming((t) => {
+      t.offset = Math.round(offset * 1e6) / 1e6;
+      t.bpms.forEach((b, i) => {
+        if (bpms[i] > 0) b.bpm = Math.round(bpms[i] * 1e6) / 1e6;
+      });
+    }, description);
+  }
+
   /** Moves the music so that beat 0 shifts by `beats` (keeps the first BPM). */
   shiftOffsetByBeats(beats: number): void {
     this.setOffset(this.timing.offset + (beats * 60) / this.tempo.firstBpm);

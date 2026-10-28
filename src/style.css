@@ -406,6 +406,24 @@ canvas.notefield {
   cursor: pointer;
 }
 
+.panel-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-footer .panel-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-footer button {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 8px;
+}
+
 .panel-info {
   flex: none;
   height: 18px;

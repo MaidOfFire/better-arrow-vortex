@@ -2,13 +2,16 @@
 // attacks fall around the chart's beats (up: later, down: earlier, ±60 ms). A bright line on the
 // middle is in sync; a line off the middle or wandering shows where and by how much the chart is
 // off. It follows the chart's timing as it is edited. Hover for the numbers, click to go there.
+// The Fix buttons move the beats onto the music (syncFix.ts): the offset alone, or the offset and
+// every BPM marker's value; either is one undo step.
 
 import { analyzeSharpOnsets } from '../analysis/detect';
+import { fitSync } from '../analysis/syncFix';
 import type { OnsetCurve } from '../analysis/findTempo';
 import { SYNC_RANGE_MS, SYNC_ROWS, beatColumns, localOffsets, type LocalOffset } from '../analysis/syncMap';
 import type { Editor } from '../editor/editor';
 import { mmss } from './chordGraph';
-import { h } from './dom';
+import { button, h } from './dom';
 import { FloatingWindow } from './floatingWindow';
 
 interface MapData {
@@ -43,7 +46,13 @@ export class SyncMap {
   ) {
     const keys = { open: 'showSyncMap', pinned: 'syncMapPinned', x: 'syncMapX', y: 'syncMapY', w: 'syncMapW', h: 'syncMapH' } as const;
     this.window = new FloatingWindow(editor, layer, 'Sync map', keys, 'Shift+O', () => this.draw());
-    this.window.body.append(h('div', { class: 'panel-plot' }, this.canvas), this.info);
+    const fixOffset = button('Fix offset', () => this.fix('offset'), 'Move the whole grid by the typical difference (every BPM marker keeps its beat and value)');
+    const fixBpms = button(
+      'Fix offset + BPMs',
+      () => this.fix('bpms'),
+      'Also set every BPM marker\'s value so the beats follow the music everywhere: markers keep their beats, sections just run a little faster or slower',
+    );
+    this.window.body.append(h('div', { class: 'panel-plot' }, this.canvas), h('div', { class: 'panel-footer' }, this.info, fixOffset, fixBpms));
     new ResizeObserver(() => this.draw()).observe(this.canvas);
 
     const c = this.canvas;
@@ -158,6 +167,24 @@ export class SyncMap {
     ctx.putImageData(pixels, 0, 0);
     this.image = img;
     return img;
+  }
+
+  /** Moves the beats onto the music as measured: the offset alone, or with every BPM value. */
+  private fix(mode: 'offset' | 'bpms'): void {
+    const ed = this.editor;
+    const d = this.data;
+    if (!d || this.curveFor !== ed.audio.buffer) return ed.hud('The sync map is still analyzing the music.');
+    const fix = fitSync(ed.timing, d.offsets, mode);
+    if ('error' in fix) return ed.hud(fix.error, 'warning');
+    const before = ed.timing.offset;
+    const adjusted = fix.bpms.filter((b, i) => Math.abs(b - ed.timing.bpms[i].bpm) >= 0.0005).length;
+    ed.setOffsetAndBpms(fix.offset, fix.bpms, mode === 'offset' ? 'Fix offset' : 'Fix offset and BPMs');
+    const markers = mode === 'bpms' ? `, ${adjusted} BPM marker${adjusted === 1 ? '' : 's'} adjusted` : '';
+    const left =
+      fix.worst.ms > 3
+        ? ` Still up to ${fix.worst.ms.toFixed(0)} ms off around ${mmss(fix.worst.time)}${mode === 'offset' ? ': fixing the BPMs too may help' : ': a BPM marker there would let it bend'}.`
+        : '';
+    ed.hud(`Fixed sync: offset ${before.toFixed(3)} → ${fix.offset.toFixed(3)}${markers}.${left} Ctrl+Z undoes it.`);
   }
 
   /** The map moves the main pane, like the minimap: editing returns to it first. */

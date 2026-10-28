@@ -49,7 +49,12 @@ folder); click one to open it again (the browser asks once for access).
   below it before, and a line that wanders shows sync that is right in one place and off in
   another. A blue trace measures it every 8 beats; hover for the number at any point (e.g. "7:48
   · measure 358 · music −15.2 ms"), click to go there. It follows the timing as you edit it, so
-  you can watch the line straighten while fixing the offset or BPM markers.
+  you can watch the line straighten while fixing the offset or BPM markers. Or let it fix them:
+  "Fix offset" moves the whole grid by the typical difference; "Fix offset + BPMs" also sets every
+  BPM marker's value (markers keep their beats, sections just run a little faster or slower) so
+  the beats follow the music where it drifts. Either is one undo step, and it says where a part is
+  still off (a BPM marker there would let it bend). On the Nuclear Blast JS 4 pack this takes
+  charts that were 25-57 ms off, or drifting, to within a millisecond or two of the music.
 - Placing notes ArrowVortex-style: number keys place/remove, hold the key and move for holds,
   Shift for mines, Alt for the right half of wide styles, record live while playing.
 - Selection by drag box (Shift adds, Alt removes), region select (Tab), select by type or
