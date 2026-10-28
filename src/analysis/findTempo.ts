@@ -150,7 +150,7 @@ export function findTempo(samples: Float32Array, sampleRate: number, minBpm = 60
 }
 
 /** An onset curve sampled at `start + i * step` seconds. */
-interface Curve {
+export interface OnsetCurve {
   env: Float32Array;
   start: number;
   step: number;
@@ -161,7 +161,7 @@ interface Curve {
  * placed at its window's centre. Too fine to find a tempo with, but it puts attacks within a
  * few milliseconds of where charts put the beat.
  */
-export function sharpOnsets(samples: Float32Array, sampleRate: number): Curve {
+export function sharpOnsets(samples: Float32Array, sampleRate: number): OnsetCurve {
   const step = sampleRate > 32000 ? 2 : 1;
   const rate = sampleRate / step;
   const N = 256;
@@ -200,7 +200,7 @@ export function sharpOnsets(samples: Float32Array, sampleRate: number): Curve {
  * high where drums hit, which tells the beat from the off-beat better than spectral flux does
  * (in fast metal the hi-hats and snares between beats have the sharper attacks).
  */
-function loudnessRise(samples: Float32Array, sampleRate: number): Curve {
+function loudnessRise(samples: Float32Array, sampleRate: number): OnsetCurve {
   const half = Math.round(sampleRate / 20);
   const hop = Math.max(1, Math.round(sampleRate / 1000));
   const sum = new Float64Array(samples.length + 1);
@@ -215,7 +215,7 @@ function loudnessRise(samples: Float32Array, sampleRate: number): Curve {
 }
 
 /** Sum of a curve at t0, t0 + period, t0 + 2 period, ... (linearly interpolated). */
-function sumAtBeats(c: Curve, t0: number, period: number): number {
+function sumAtBeats(c: OnsetCurve, t0: number, period: number): number {
   const end = c.start + (c.env.length - 1) * c.step;
   let s = 0;
   for (let t = t0; t < end; t += period) {
@@ -231,7 +231,7 @@ function sumAtBeats(c: Curve, t0: number, period: number): number {
  * smoothed. A mean, not a sum: at periods that are a whole number of samples of the curve, its
  * samples keep landing in the same bins and sums there would look like a strong beat.
  */
-function fold(c: Curve, period: number, stride = 1): Float64Array {
+function fold(c: OnsetCurve, period: number, stride = 1): Float64Array {
   const bins = Math.max(3, Math.round(period * 1000));
   const sum = new Float64Array(bins);
   const count = new Float64Array(bins);
@@ -256,7 +256,7 @@ function fold(c: Curve, period: number, stride = 1): Float64Array {
  * onsets pile up most on one phase of the beat. That peak is narrow: a twentieth of a BPM off,
  * the beats have drifted apart over a few minutes.
  */
-function refineTempo(c: Curve, bpm: number): number {
+function refineTempo(c: OnsetCurve, bpm: number): number {
   const tightness = (b: number, stride: number) => Math.max(...fold(c, 60 / b, stride));
   let best = bpm;
   let bestV = -Infinity;
@@ -275,10 +275,10 @@ function refineTempo(c: Curve, bpm: number): number {
 }
 
 /** Charts put the beat this long after the peak of the sharp onset curve (median over 29 songs). */
-const BEAT_AFTER_ONSET_PEAK = 0.0015;
+export const BEAT_AFTER_ONSET_PEAK = 0.0015;
 
 /** Time of the first beat at or after 0 for a beat period (seconds). */
-function beatPhase(sharp: Curve, rise: Curve, period: number): number {
+function beatPhase(sharp: OnsetCurve, rise: OnsetCurve, period: number): number {
   const h = fold(sharp, period);
   let bin = 0;
   for (let b = 1; b < h.length; ++b) if (h[b] > h[bin]) bin = b;

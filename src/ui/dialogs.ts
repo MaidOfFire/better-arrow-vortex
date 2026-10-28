@@ -338,6 +338,17 @@ class AdjustSyncDialog extends Dialog {
       row(button('−10ms', tweakOffset(-0.01)), button('−1ms', tweakOffset(-0.001)), button('+1ms', tweakOffset(0.001)), button('+10ms', tweakOffset(0.01))),
       field('Initial BPM', this.bpmInput),
       row(button('−0.1', tweakBpm(-0.1)), button('−0.01', tweakBpm(-0.01)), button('+0.01', tweakBpm(0.01)), button('+0.1', tweakBpm(0.1))),
+      row(
+        button(
+          'Sync map',
+          () => {
+            ed.settings.showSyncMap = true;
+            ed.saveSettings();
+            ed.changed();
+          },
+          "Show where the music's attacks fall around the beats along the whole song (Shift+O)",
+        ),
+      ),
       section('Move first beat'),
       row(
         button('+1 beat', () => ed.shiftOffsetByBeats(1), 'Increase the music offset by one beat'),

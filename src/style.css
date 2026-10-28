@@ -343,9 +343,9 @@ canvas.notefield {
   padding: 0 4px;
 }
 
-/* NPS graph window (chord density, after Etterna's Til' Death theme) ------------------------- */
+/* Floating windows (NPS graph, sync map) ------------------------------------------------------ */
 
-.dialog.nps-window {
+.dialog.float-window {
   width: 50%;
   min-width: 320px;
   min-height: 90px;
@@ -354,17 +354,17 @@ canvas.notefield {
   overflow: hidden;
 }
 
-.dialog.nps-window[hidden] {
+.dialog.float-window[hidden] {
   display: none;
 }
 
-.nps-buttons {
+.float-buttons {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
-.nps-pin {
+.float-pin {
   display: flex;
   background: none;
   border: none;
@@ -374,16 +374,16 @@ canvas.notefield {
   transform: rotate(45deg);
 }
 
-.nps-pin:hover {
+.float-pin:hover {
   color: var(--text);
 }
 
-.nps-pin.pinned {
+.float-pin.pinned {
   color: var(--accent);
   transform: none;
 }
 
-.nps-body {
+.float-body {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -392,13 +392,13 @@ canvas.notefield {
 }
 
 /* The canvas fills whatever room the window has, so the graph grows when it is resized. */
-.nps-plot {
+.panel-plot {
   position: relative;
   flex: 1;
   min-height: 24px;
 }
 
-.nps-canvas {
+.panel-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -406,7 +406,7 @@ canvas.notefield {
   cursor: pointer;
 }
 
-.nps-info {
+.panel-info {
   flex: none;
   height: 18px;
   padding-right: 12px;

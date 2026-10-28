@@ -1,7 +1,7 @@
 // Main-thread wrappers: mix the music to mono and run the analyses in workers.
 
 import { BT_RATE } from './beatThis';
-import type { TempoEstimate } from './findTempo';
+import type { OnsetCurve, TempoEstimate } from './findTempo';
 import type { OnsetData } from './onsets';
 import type { BeatFeatures, RepeatGroup } from './structure';
 
@@ -78,6 +78,12 @@ async function resample(x: Float32Array<ArrayBuffer>, from: number, to: number):
   src.connect(ctx.destination);
   src.start();
   return (await ctx.startRendering()).getChannelData(0);
+}
+
+/** The sharp onset curve of the whole song (attacks to a millisecond or two), for the sync map. */
+export function analyzeSharpOnsets(buffer: AudioBuffer): Promise<OnsetCurve> {
+  const worker = new Worker(new URL('./syncWorker.ts', import.meta.url), { type: 'module' });
+  return runWorker(worker, buffer, (d) => d.curve as OnsetCurve);
 }
 
 export function analyzeOnsets(buffer: AudioBuffer): Promise<OnsetData> {

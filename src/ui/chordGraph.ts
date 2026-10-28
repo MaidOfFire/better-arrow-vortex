@@ -3,98 +3,44 @@
 // jump, hand, quad), mines in red, and a red line at 70% of the peak. Unlike Til' Death the
 // shades are stacked, so a busy second shows every chord size it has. The orange band is the
 // stretch the notefield shows; click or drag to move the main cursor.
-//
-// The window starts half as wide as the editor; drag it by its title, resize it from the corner.
-// Unpinned it is a popup that closes on a click elsewhere; pinned it stays open, also in the next
-// session.
 
 import { fmtNum, type Editor } from '../editor/editor';
 import { chordDensity, type ChordDensity } from '../model/density';
-import { makeDraggable } from './dialogs';
 import { h } from './dom';
+import { FloatingWindow } from './floatingWindow';
 
 const CHORD_NAMES = ['single', 'jump', 'hand', 'quad'];
-
-const PIN_ICON =
-  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M5 1h6v1.5l-1 1V7l2.5 2.5V11h-9V9.5L6 7V3.5l-1-1z"/><path fill="currentColor" d="M7.4 11h1.2v3.5L8 16l-.6-1.5z"/></svg>';
 
 function chordName(size: number, count: number): string {
   const name = CHORD_NAMES[size - 1] ?? `${size}-chord`;
   return `${count} ${name}${count === 1 ? '' : 's'}`;
 }
 
-function mmss(t: number): string {
+export function mmss(t: number): string {
   const a = Math.abs(t);
-  return `${t < 0 ? '-' : ''}${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
+  return `${t < 0 ? '-' : ''}${Math.floor(a / 60)}:${String(Math.floor(a % 60)).padStart(2, '0')}`;
 }
 
 export class ChordGraph {
-  readonly el: HTMLElement;
-  private readonly canvas = h('canvas', { class: 'nps-canvas' });
-  private readonly info = h('div', { class: 'nps-info' });
-  private readonly pin = h('button', { class: 'nps-pin', type: 'button' });
+  private readonly window: FloatingWindow;
+  private readonly canvas = h('canvas', { class: 'panel-canvas' });
+  private readonly info = h('div', { class: 'panel-info' });
   private data: ChordDensity | null = null;
   private dataKey: unknown[] = [];
   private bars: HTMLCanvasElement | null = null;
   private barsKey: unknown[] = [];
   private hoverX: number | null = null;
   private dragging = false;
-  private saveTimer = 0;
 
   constructor(
     private readonly editor: Editor,
-    private readonly layer: HTMLElement,
+    layer: HTMLElement,
     private readonly onSeek: () => void,
   ) {
-    const s = editor.settings;
-    // An unpinned graph is a popup: it does not come back on its own in the next session.
-    if (!s.chordGraphPinned) s.showChordGraph = false;
-
-    const close = h('button', { class: 'dlg-close', title: 'Close (Shift+G)', type: 'button' }, '×');
-    const title = h('div', { class: 'dlg-title' }, h('span', {}, 'NPS graph'), h('div', { class: 'nps-buttons' }, this.pin, close));
-    this.el = h('div', { class: 'dialog nps-window', hidden: true }, title, h('div', { class: 'nps-body' }, h('div', { class: 'nps-plot' }, this.canvas), this.info));
-    this.pin.innerHTML = PIN_ICON;
-    layer.append(this.el);
-    this.updatePin();
-
-    makeDraggable(this.el, title, () => this.saveGeometry());
-    close.addEventListener('click', () => this.setOpen(false));
-    this.pin.addEventListener('click', () => {
-      s.chordGraphPinned = !s.chordGraphPinned;
-      editor.saveSettings();
-      this.updatePin();
-      editor.hud(`NPS graph ${s.chordGraphPinned ? 'pinned: stays open' : 'unpinned: closes on a click elsewhere'}`);
-    });
-    // Bring to front before the canvas captures the pointer (moving it later would drop the capture).
-    this.el.addEventListener(
-      'pointerdown',
-      () => {
-        if (layer.lastElementChild !== this.el) layer.append(this.el);
-      },
-      true,
-    );
-    // Unpinned: a click anywhere else closes it (the menus and its own toolbar button excepted).
-    window.addEventListener(
-      'mousedown',
-      (e) => {
-        const t = e.target;
-        if (this.el.hidden || s.chordGraphPinned || !(t instanceof Element)) return;
-        if (this.el.contains(t) || t.closest('.menubar')) return;
-        this.setOpen(false);
-      },
-      true,
-    );
-    new ResizeObserver(() => {
-      this.place();
-      this.draw();
-    }).observe(layer);
+    const keys = { open: 'showChordGraph', pinned: 'chordGraphPinned', x: 'chordGraphX', y: 'chordGraphY', w: 'chordGraphW', h: 'chordGraphH' } as const;
+    this.window = new FloatingWindow(editor, layer, 'NPS graph', keys, 'Shift+G', () => this.draw());
+    this.window.body.append(h('div', { class: 'panel-plot' }, this.canvas), this.info);
     new ResizeObserver(() => this.draw()).observe(this.canvas);
-    // Resizing from the corner: remember the size once the mouse stops.
-    new ResizeObserver(() => {
-      if (this.el.hidden) return;
-      clearTimeout(this.saveTimer);
-      this.saveTimer = window.setTimeout(() => this.saveGeometry(), 250);
-    }).observe(this.el);
 
     const c = this.canvas;
     c.addEventListener('pointerdown', (e) => {
@@ -122,53 +68,7 @@ export class ChordGraph {
 
   /** Called whenever the editor redraws. */
   update(): void {
-    const show = this.editor.isOpen && this.editor.settings.showChordGraph;
-    if (this.el.hidden === show) {
-      this.el.hidden = !show;
-      if (show) this.place();
-    }
-    if (show) this.draw();
-  }
-
-  private setOpen(open: boolean): void {
-    const ed = this.editor;
-    if (ed.settings.showChordGraph === open) return;
-    ed.settings.showChordGraph = open;
-    ed.saveSettings();
-    ed.changed();
-  }
-
-  private updatePin(): void {
-    const pinned = this.editor.settings.chordGraphPinned;
-    this.pin.classList.toggle('pinned', pinned);
-    this.pin.title = pinned ? 'Pinned: stays open while you edit. Click to unpin.' : 'Pin: keep it open while you edit (unpinned it closes on a click elsewhere).';
-  }
-
-  /**
-   * Width is kept as a fraction of the editor and position as a fraction of the room around the
-   * window, so both survive resizing the browser.
-   */
-  private place(): void {
-    if (this.el.hidden) return;
-    const s = this.editor.settings;
-    this.el.style.width = `${(s.chordGraphW * 100).toFixed(2)}%`;
-    this.el.style.height = `${Math.round(s.chordGraphH)}px`;
-    const roomX = Math.max(0, this.layer.clientWidth - this.el.offsetWidth);
-    const roomY = Math.max(0, this.layer.clientHeight - this.el.offsetHeight - 8);
-    this.el.style.left = `${Math.round(s.chordGraphX * roomX)}px`;
-    this.el.style.top = `${Math.round(s.chordGraphY * roomY)}px`;
-  }
-
-  private saveGeometry(): void {
-    if (this.el.hidden || !this.layer.clientWidth) return;
-    const s = this.editor.settings;
-    s.chordGraphW = Math.min(1, this.el.offsetWidth / this.layer.clientWidth);
-    s.chordGraphH = this.el.offsetHeight;
-    const roomX = this.layer.clientWidth - this.el.offsetWidth;
-    const roomY = this.layer.clientHeight - this.el.offsetHeight - 8;
-    s.chordGraphX = roomX > 0 ? Math.min(1, Math.max(0, this.el.offsetLeft / roomX)) : 0.5;
-    s.chordGraphY = roomY > 0 ? Math.min(1, Math.max(0, this.el.offsetTop / roomY)) : 1;
-    this.editor.saveSettings();
+    if (this.window.update()) this.draw();
   }
 
   private density(): ChordDensity {
@@ -244,7 +144,7 @@ export class ChordGraph {
     const c = this.canvas;
     const w = c.clientWidth;
     const hgt = c.clientHeight;
-    if (this.el.hidden || !ed.isOpen || !w || !hgt) return;
+    if (this.window.el.hidden || !ed.isOpen || !w || !hgt) return;
     const dpr = window.devicePixelRatio || 1;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(hgt * dpr)) {
       c.width = Math.round(w * dpr);
