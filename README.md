@@ -48,7 +48,8 @@ folder); click one to open it again (the browser asks once for access).
   quantization; cut/copy/paste/insert-paste, delete, mirror, expand/compress, requantize, note-type
   conversions, holds ↔ rolls; unlimited undo/redo.
 - Tempo editing at the cursor (Ctrl+Alt+Q/W/E/R/T/[), clickable tempo boxes, Adjust Sync (offset,
-  initial BPM, move first beat, automatic BPM + offset detection), Adjust Tempo (halve/double,
+  initial BPM, move first beat, automatic BPM + offset detection, which lands within a few
+  milliseconds of hand-synced Etterna charts), Adjust Tempo (halve/double,
   insert/delete beats, region to stop), tempo breakdown.
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),
