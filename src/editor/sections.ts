@@ -2,7 +2,7 @@
 // automatically from the audio or marked by hand, plus the side-by-side compare state.
 
 import { analyzeOnsets, analyzeStructure } from '../analysis/detect';
-import { beatSimilarity, rankMatches, type BeatFeatures } from '../analysis/structure';
+import { DETAIL_LEVELS, beatSimilarity, rankMatches, type BeatFeatures } from '../analysis/structure';
 import { lowerBoundRow } from '../model/notes';
 import { ROWS_PER_BEAT, type Note, type Simfile } from '../model/types';
 import type { Editor, MirrorMode } from './editor';
@@ -76,6 +76,9 @@ export class SectionManager {
   private songKey = '';
   /** Timing the features were computed with; analysis is redone when it changes. */
   private featuresTiming = '';
+  private featuresBuffer: AudioBuffer | null = null;
+  /** Bumped by every analysis, so only the latest one (e.g. after moving the detail slider) applies. */
+  private analysisRun = 0;
 
   constructor(private readonly ed: Editor) {}
 
@@ -294,10 +297,15 @@ export class SectionManager {
     try {
       const onsets = ed.onsets ?? (await analyzeOnsets(buffer));
       const timing = JSON.stringify(ed.timing);
-      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets);
-      if (ed.audio.buffer !== buffer) return; // another song was loaded meanwhile
+      const run = ++this.analysisRun;
+      // The beat features only depend on the music and the beat grid: reuse them for another detail level.
+      const cached = this.features && this.featuresBuffer === buffer && this.featuresTiming === timing ? this.features : undefined;
+      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets, ed.settings.sectionDetail, cached);
+      // Another song was loaded, or a newer analysis started, meanwhile.
+      if (ed.audio.buffer !== buffer || run !== this.analysisRun) return;
       this.features = features;
       this.featuresTiming = timing;
+      this.featuresBuffer = buffer;
       this.status = 'ready';
       // Automatic groups are refreshed (detection may have improved); hand-made ones are kept.
       if (replaceAuto || this.groups.every((g) => g.auto)) {
@@ -393,6 +401,17 @@ export class SectionManager {
     this.groupEdited(g);
     if (this.activeId === g.id) this.activeId = null;
     this.changed();
+  }
+
+  /** Sets how much automatic detection finds (1–5) and detects again; hand-made groups stay. */
+  setDetail(level: number): void {
+    const ed = this.ed;
+    level = Math.min(DETAIL_LEVELS.length, Math.max(1, Math.round(level)));
+    ed.settings.sectionDetail = level;
+    ed.saveSettings();
+    ed.hud(`Section detail ${level}/${DETAIL_LEVELS.length}: ${DETAIL_LEVELS[level - 1].label.toLowerCase()}`);
+    if (ed.audio.buffer) void this.analyze(true);
+    else ed.changed();
   }
 
   setActive(g: SectionGroup | null): void {

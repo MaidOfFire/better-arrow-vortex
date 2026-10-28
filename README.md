@@ -53,7 +53,11 @@ folder); click one to open it again (the browser asks once for access).
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),
   at three scales so that repeats nest: whole sections, the parts that repeat inside them (e.g. a
-  chorus phrase) and smaller figures. Occurrences are matched at any beat offset, also when a
+  chorus phrase) and smaller figures. A detail slider in the Similar sections dialog (also
+  Sections > Detection detail) has five steps: 1 keeps only the clearest big sections, 2 all big
+  sections, 3 adds the parts inside them, 4 (default) adds short figures, 5 also fainter and
+  shorter repeats; moving it redetects in a moment (the per-beat analysis is reused) and keeps
+  groups made by hand. Occurrences are matched at any beat offset, also when a
   repeat is not a whole number of measures later, and each group's start and end are then moved
   beat by beat to where its occurrences stop sounding alike; where two neighbouring sections
   both claim a few beats, each keeps the beats its own occurrences agree on more. The nesting

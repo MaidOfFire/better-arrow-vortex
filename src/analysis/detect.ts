@@ -16,6 +16,10 @@ function mono(buffer: AudioBuffer): Float32Array {
 
 function runWorker<T>(worker: Worker, buffer: AudioBuffer, pick: (data: Record<string, unknown>) => T, extra: Record<string, unknown> = {}): Promise<T> {
   const samples = mono(buffer);
+  return post(worker, { samples, sampleRate: buffer.sampleRate, ...extra }, [samples.buffer], pick);
+}
+
+function post<T>(worker: Worker, message: Record<string, unknown>, transfer: Transferable[], pick: (data: Record<string, unknown>) => T): Promise<T> {
   return new Promise((resolve, reject) => {
     worker.onmessage = (e: MessageEvent<Record<string, unknown>>) => {
       worker.terminate();
@@ -26,7 +30,7 @@ function runWorker<T>(worker: Worker, buffer: AudioBuffer, pick: (data: Record<s
       worker.terminate();
       reject(new Error(e.message));
     };
-    worker.postMessage({ samples, sampleRate: buffer.sampleRate, ...extra }, [samples.buffer]);
+    worker.postMessage(message, transfer);
   });
 }
 
@@ -40,12 +44,22 @@ export function analyzeOnsets(buffer: AudioBuffer): Promise<OnsetData> {
   return runWorker(worker, buffer, (d) => d.data as OnsetData);
 }
 
-/** Beat-level features and automatically found repeats, for the given beat times (seconds). */
+type StructureResult = { features: BeatFeatures; groups: RepeatGroup[] };
+
+/**
+ * Beat-level features and automatically found repeats at a detail level (see DETAIL_LEVELS), for
+ * the given beat times (seconds). With `features` from an earlier run on the same beat grid, only
+ * the search runs again.
+ */
 export function analyzeStructure(
   buffer: AudioBuffer,
   beatTimes: Float64Array,
   onsets: OnsetData,
-): Promise<{ features: BeatFeatures; groups: RepeatGroup[] }> {
+  detail: number,
+  features?: BeatFeatures,
+): Promise<StructureResult> {
   const worker = new Worker(new URL('./structureWorker.ts', import.meta.url), { type: 'module' });
-  return runWorker(worker, buffer, (d) => d.result as { features: BeatFeatures; groups: RepeatGroup[] }, { beatTimes, onsets });
+  const pick = (d: Record<string, unknown>) => d.result as StructureResult;
+  if (features) return post(worker, { features, detail }, [], pick);
+  return runWorker(worker, buffer, pick, { beatTimes, onsets, detail });
 }

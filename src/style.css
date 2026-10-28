@@ -622,6 +622,76 @@ table {
   background: var(--accent);
 }
 
+.detail {
+  margin: 6px 0 2px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.detail-row > .hint {
+  line-height: 20px;
+}
+
+.detail-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-slider {
+  width: 100%;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+/* Centred under the thumb's stops: the thumb is about 16px wide, a tick 14px. */
+.detail-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 1px;
+}
+
+.detail-tick {
+  width: 14px;
+  padding: 3px 0 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  position: relative;
+}
+
+.detail-tick::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 6.5px;
+  width: 1px;
+  height: 3px;
+  background: var(--muted);
+}
+
+.detail-tick.on {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.detail-tick:disabled {
+  cursor: default;
+}
+
+.detail-label {
+  font-size: 12px;
+  text-align: center;
+  margin-top: 2px;
+}
+
 .section-list {
   max-height: 300px;
   overflow: auto;

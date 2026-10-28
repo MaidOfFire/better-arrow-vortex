@@ -265,6 +265,8 @@ describe('nested sections', () => {
     const groups = findHierarchy(f).map((g) => `${g.length}@${g.starts.join(',')}`);
     expect(groups).toContain('64@0,128');
     expect(groups).toContain('16@0,32,128,160');
+    // At the basic level only the big section is looked for.
+    expect(findHierarchy(f, 1).map((g) => `${g.length}@${g.starts.join(',')}`)).toEqual(['64@0,128']);
   });
 
   // 20 measures, the last one with a note so the chart is long enough.

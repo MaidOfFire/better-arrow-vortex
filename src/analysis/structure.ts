@@ -215,6 +215,7 @@ export function findRepeats(
   maxGroups = 16,
   maxLength = Infinity,
   index = new SimilarityIndex(f),
+  strong = 0.99,
 ): RepeatGroup[] {
   const starts: number[] = [];
   for (let i = 0; i + window <= f.beats; i += step) starts.push(i);
@@ -225,9 +226,9 @@ export function findRepeats(
   }
   if (!pairs.length) return [];
   const sorted = pairs.map((p) => p.s).sort((x, y) => x - y);
-  // Strong pairs: the top 1%, but never stricter than 0.8 (when repeats are most of that top 1%,
-  // the percentile would land on their own score and cut them apart).
-  const threshold = Math.max(0.3, Math.min(0.8, sorted[Math.floor(sorted.length * 0.99)]));
+  // Strong pairs: the top 1% (by default), but never stricter than 0.8 (when repeats are most of
+  // that top 1%, the percentile would land on their own score and cut them apart).
+  const threshold = Math.max(0.3, Math.min(0.8, sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * strong))]));
 
   // Runs of strong windows along each lag.
   const byLag = new Map<number, { a: number; s: number }[]>();
@@ -309,19 +310,37 @@ export function findRepeats(
 }
 
 /**
- * Repeats at three scales, pooled so that groups can nest: whole sections, then parts of up to
- * 8 measures, then figures of up to 4 measures. The finer scales are capped in length, so they
- * find what repeats inside sections instead of finding the sections again. A finer group that
- * describes the same stretches as one already found (similar length, mostly the same beats) is
- * dropped. The nesting itself is derived later from which occurrences contain which.
+ * How much detection looks for, from 1 (only the clearest big sections) to 5 (every repeat it
+ * can find): how many of the three scales it searches, how many groups it keeps, and which share
+ * of all window pairs counts as alike (0.99: the top 1%).
  */
-export function findHierarchy(f: BeatFeatures, maxGroups = 24, refine = true): RepeatGroup[] {
+export const DETAIL_LEVELS = [
+  { scales: 1, maxGroups: 4, perScale: 12, strong: 0.99, label: 'Only the clearest big sections' },
+  { scales: 1, maxGroups: 12, perScale: 12, strong: 0.99, label: 'Big sections' },
+  { scales: 2, maxGroups: 18, perScale: 12, strong: 0.99, label: 'Sections and the parts repeating inside them' },
+  { scales: 3, maxGroups: 24, perScale: 16, strong: 0.99, label: 'Sections, parts and short figures' },
+  { scales: 3, maxGroups: 40, perScale: 24, strong: 0.98, label: 'Everything, also fainter and shorter repeats' },
+] as const;
+export const DEFAULT_DETAIL = 4;
+
+/**
+ * Repeats at up to three scales, pooled so that groups can nest: whole sections, then parts of
+ * up to 8 measures, then figures of up to 4 measures. The finer scales are capped in length, so
+ * they find what repeats inside sections instead of finding the sections again. A finer group
+ * that describes the same stretches as one already found (similar length, mostly the same beats)
+ * is dropped. The nesting itself is derived later from which occurrences contain which.
+ */
+export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine = true): RepeatGroup[] {
+  const level = DETAIL_LEVELS[Math.min(DETAIL_LEVELS.length, Math.max(1, Math.round(detail))) - 1];
+  const { maxGroups, perScale, strong } = level;
   const index = new SimilarityIndex(f);
   const scales = [
-    findRepeats(f, 16, 4, 32, 16, Infinity, index),
-    findRepeats(f, 8, 4, 16, 16, 32, index),
-    findRepeats(f, 4, 2, 8, 16, 16, index),
-  ];
+    () => findRepeats(f, 16, 4, 32, perScale, Infinity, index, strong),
+    () => findRepeats(f, 8, 4, 16, perScale, 32, index, strong),
+    () => findRepeats(f, 4, 2, 8, perScale, 16, index, strong),
+  ]
+    .slice(0, level.scales)
+    .map((run) => run());
   const coverage = (g: RepeatGroup) => {
     const marks = new Uint8Array(f.beats);
     for (const s of g.starts) marks.fill(1, s, Math.min(f.beats, s + g.length));

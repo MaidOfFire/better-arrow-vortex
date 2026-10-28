@@ -152,6 +152,10 @@ export function createActions(host: ActionHost): Map<string, Action> {
   const hasMusic = () => ed.audio.buffer !== null;
   add('sections.dialog', 'Similar sections...', ['shift+m'], () => host.openDialog('sections'), { enabled: hasSim });
   add('sections.detect', 'Detect automatically', [], () => void sec.analyze(true), { enabled: hasMusic });
+  for (let n = 1; n <= 5; ++n) {
+    const name = ['1 · Basic: clearest big sections', '2 · Big sections', '3 · Sections and their parts', '4 · Sections, parts and figures', '5 · Detailed: everything'][n - 1];
+    add(`sections.detail${n}`, name, [], () => sec.setDetail(n), { checked: () => s.sectionDetail === n });
+  }
   add('sections.fromRegion', 'New group from selection', [], () => {
     sec.newGroupFromRegion();
     host.openDialog('sections');
@@ -412,6 +416,7 @@ export const MENU: { label: string; items: MenuEntry[] }[] = [
       'sections.dialog',
       '-',
       'sections.detect',
+      { label: 'Detection detail', items: ['sections.detail1', 'sections.detail2', 'sections.detail3', 'sections.detail4', 'sections.detail5'] },
       'sections.fromRegion',
       'sections.findSimilar',
       'sections.addCursor',

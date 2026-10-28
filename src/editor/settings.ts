@@ -57,6 +57,8 @@ export interface Settings {
   sideDepth: number;
   /** Write section groups into the simfile as a comment line when saving. */
   sectionsInFile: boolean;
+  /** How much automatic detection finds: 1 = only the clearest big sections … 5 = everything. */
+  sectionDetail: number;
 
   jumpToNextNote: boolean;
   undoRedoJump: boolean;
@@ -106,6 +108,7 @@ const DEFAULTS: Settings = {
   sectionGhosts: false,
   sectionDiffs: true,
   sectionsInFile: true,
+  sectionDetail: 4,
   sideViews: false,
   sideDepth: 0,
 

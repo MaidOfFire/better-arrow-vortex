@@ -2,6 +2,7 @@
 // controls when the editor reports a change.
 
 import { detectTempo } from '../analysis/detect';
+import { DETAIL_LEVELS } from '../analysis/structure';
 import type { TempoEstimate } from '../analysis/findTempo';
 import { MENU, displayShortcut, type Action, type DialogId, type MenuEntry } from '../app/actions';
 import { SEGMENT_META, fmtNum, formatTime, type Editor, type SegmentType } from '../editor/editor';
@@ -669,6 +670,7 @@ class SectionsDialog extends Dialog {
           : `${sec.groups.length} group(s). Detection follows the chart's beat grid, so set BPM/offset first.`;
     this.body.append(
       row(button('Detect automatically', () => void sec.analyze(true), 'Find repeated sections in the music (keeps groups you made or edited)')),
+      this.detailSlider(),
       h('p', { class: 'hint' }, status),
     );
 
@@ -729,6 +731,43 @@ class SectionsDialog extends Dialog {
       check('Show section brackets beside the notes', 'showSections'),
       section('Saving'),
       check('Save groups in the simfile (a comment line the game ignores)', 'sectionsInFile'),
+    );
+  }
+
+  /** Five steps from only the clearest big sections to every repeat detection can find. */
+  private detailSlider(): HTMLElement {
+    const ed = this.ed;
+    const n = DETAIL_LEVELS.length;
+    const describe = (v: number) => `${v}/${n} · ${DETAIL_LEVELS[v - 1].label}`;
+    const off = !ed.audio.buffer;
+    const slider = h('input', { type: 'range', min: 1, max: n, step: 1, value: ed.settings.sectionDetail, class: 'detail-slider', disabled: off });
+    const label = h('div', { class: 'detail-label' }, describe(ed.settings.sectionDetail));
+    slider.addEventListener('input', () => (label.textContent = describe(+slider.value)));
+    slider.addEventListener('change', () => {
+      slider.blur(); // lets the dialog show the new result
+      ed.sections.setDetail(+slider.value);
+    });
+    // Numbered ticks under the steps (browsers draw none of their own here); each one is clickable.
+    const ticks = Array.from({ length: n }, (_, i) =>
+      h('button', { class: `detail-tick${i + 1 === ed.settings.sectionDetail ? ' on' : ''}`, type: 'button', title: DETAIL_LEVELS[i].label, disabled: off }, String(i + 1)),
+    );
+    ticks.forEach((t, i) =>
+      t.addEventListener('click', () => {
+        t.blur();
+        ed.sections.setDetail(i + 1);
+      }),
+    );
+    return h(
+      'div',
+      { class: 'detail', title: 'How much automatic detection finds. Groups you made or edited are kept.' },
+      h(
+        'div',
+        { class: 'detail-row' },
+        h('span', { class: 'hint' }, 'Basic'),
+        h('div', { class: 'detail-box' }, slider, h('div', { class: 'detail-ticks' }, ...ticks)),
+        h('span', { class: 'hint' }, 'Detailed'),
+      ),
+      label,
     );
   }
 
