@@ -59,6 +59,8 @@ export interface Settings {
   sectionsInFile: boolean;
   /** How much automatic detection finds: 1 = only the clearest big sections … 5 = everything. */
   sectionDetail: number;
+  /** BPM detection in Adjust sync: the built-in onset analysis, or the Beat This! neural beat tracker. */
+  tempoDetector: 'classic' | 'beatThis';
 
   jumpToNextNote: boolean;
   undoRedoJump: boolean;
@@ -109,6 +111,7 @@ const DEFAULTS: Settings = {
   sectionDiffs: true,
   sectionsInFile: true,
   sectionDetail: 4,
+  tempoDetector: 'classic',
   sideViews: false,
   sideDepth: 0,
 

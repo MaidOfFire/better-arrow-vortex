@@ -1,7 +1,7 @@
 // Floating tool windows (ArrowVortex-style dialogs). Each dialog rebuilds or refreshes its
 // controls when the editor reports a change.
 
-import { detectTempo } from '../analysis/detect';
+import { detectTempo, detectTempoBeatThis } from '../analysis/detect';
 import { DETAIL_LEVELS } from '../analysis/structure';
 import type { TempoEstimate } from '../analysis/findTempo';
 import { MENU, displayShortcut, type Action, type DialogId, type MenuEntry } from '../app/actions';
@@ -318,6 +318,7 @@ class AdjustSyncDialog extends Dialog {
   private estimates: TempoEstimate[] = [];
   private chosen = 0;
   private busy = false;
+  private progress: HTMLElement | null = null;
   private offsetInput!: HTMLInputElement;
   private bpmInput!: HTMLInputElement;
 
@@ -345,9 +346,26 @@ class AdjustSyncDialog extends Dialog {
         button('−1 beat', () => ed.shiftOffsetByBeats(-1), 'Decrease the music offset by one beat'),
       ),
       section('Automatic BPM detection'),
+      field(
+        'Method',
+        select(
+          [
+            ['classic', 'Onsets (fast)'],
+            ['beatThis', 'Beat This! (neural network)'],
+          ] as const,
+          ed.settings.tempoDetector,
+          (v) => {
+            ed.settings.tempoDetector = v;
+            ed.saveSettings();
+            this.rebuild();
+          },
+        ),
+        'Onsets: finds tempo and offset from where the music\'s attacks line up. Beat This!: a neural beat tracker (downloads a 10 MB model once) that also finds where bars start, so beat 0 lands on a downbeat; slower.',
+      ),
     );
     const list = h('div', { class: 'estimates' });
-    if (this.busy) list.append(h('p', {}, 'Analyzing the music...'));
+    this.progress = this.busy ? h('p', {}, 'Analyzing the music...') : null;
+    if (this.progress) list.append(this.progress);
     this.estimates.forEach((e, i) => {
       const radio = h('input', { type: 'radio', name: 'bpm-estimate', checked: i === this.chosen });
       radio.addEventListener('change', () => (this.chosen = i));
@@ -388,7 +406,13 @@ class AdjustSyncDialog extends Dialog {
     this.estimates = [];
     this.rebuild();
     try {
-      this.estimates = await detectTempo(buf);
+      if (this.ed.settings.tempoDetector === 'beatThis') {
+        this.estimates = await detectTempoBeatThis(buf, (done) => {
+          if (this.progress) this.progress.textContent = `Finding beats... ${Math.round(done * 100)}%`;
+        });
+      } else {
+        this.estimates = await detectTempo(buf);
+      }
       this.chosen = 0;
       if (!this.estimates.length) this.ed.hud('Could not find a tempo.', 'warning');
     } catch (e) {

@@ -49,7 +49,9 @@ folder); click one to open it again (the browser asks once for access).
   conversions, holds ↔ rolls; unlimited undo/redo.
 - Tempo editing at the cursor (Ctrl+Alt+Q/W/E/R/T/[), clickable tempo boxes, Adjust Sync (offset,
   initial BPM, move first beat, automatic BPM + offset detection, which lands within a few
-  milliseconds of hand-synced Etterna charts), Adjust Tempo (halve/double,
+  milliseconds of hand-synced Etterna charts; as the method, "Onsets" is fast, "Beat This!" runs a
+  neural beat tracker on the first two minutes, about 12 s, after a one-time 10 MB model
+  download, and also puts beat 0 on a downbeat so measures start where the bars do), Adjust Tempo (halve/double,
   insert/delete beats, region to stop), tempo breakdown.
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),
@@ -107,7 +109,9 @@ segments (they are preserved on save), two-player routine notes.
 src/model/      simfile data, .sm/.ssc parser and writer, timing (beat <-> time), note helpers
 src/editor/     Editor state and all edit operations, view/cursor/snap, renderer, noteskin,
                 minimap, waveform peaks, audio playback, file access, undo history, settings
-src/analysis/   BPM / offset detection and per-band onset strength (run in Web Workers)
+src/analysis/   BPM / offset detection, per-band onset strength, similar sections, Beat This!
+                (all run in Web Workers)
+public/models/  the Beat This! "small0" model as ONNX, run with ONNX Runtime Web
 src/app/        actions table (menus + shortcuts), input handling, app wiring, demo song
 src/ui/         menu bar, dialogs, status bar, HUD
 tests/          vitest unit tests
@@ -128,3 +132,10 @@ tests/          vitest unit tests
 - **Edits:** go through `editor.editNotes(remove, add, description)` or `editor.editTiming(...)`
   so they are undoable and mark the file as modified.
 - `window.app` is exposed in the browser console for quick experiments.
+
+## Credits
+
+Beat This! (Francesco Foscarin, Jan Schlüter, Gerhard Widmer; JKU Linz, ISMIR 2024,
+https://github.com/CPJKU/beat_this): code and model weights under the MIT license. Its "small0"
+model is included as `public/models/beat_this_small0.onnx` (exported to ONNX for this editor;
+licence in `public/models/LICENSE-beat-this.txt`) and runs with ONNX Runtime Web (MIT).

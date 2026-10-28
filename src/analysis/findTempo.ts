@@ -304,3 +304,74 @@ function beatPhase(sharp: Curve, rise: Curve, period: number): number {
   }
   return ((beat % period) + period) % period;
 }
+
+/**
+ * BPM and first beat from tracked beat times (e.g. Beat This!): the steady tempo the beats
+ * follow, pinned to the millisecond with the sharp onsets as in findTempo. The tracker already
+ * knows the beat from the off-beat, so the onsets only adjust within ±25 ms of its beats. With
+ * downbeats, the first beat is put on one, so measures start where the music's bars do. Also
+ * offered at double and half tempo (charts of fast music often count twice as many beats).
+ */
+export function tempoFromBeats(beats: number[], downbeats: number[], samples: Float32Array, sampleRate: number): TempoEstimate[] {
+  if (beats.length < 8) return [];
+  const n = beats.length;
+  // The steady tempo: the period, within ±10% of the typical gap between beats, at which the
+  // tracked beats share one phase most closely. Missed beats and stretches tracked at half tempo
+  // still fall on that grid, and over hundreds of beats the tracker's 20 ms frames average out.
+  const gaps = beats.slice(1).map((b, i) => b - beats[i]).sort((x, y) => x - y);
+  const rough = gaps[Math.floor(gaps.length / 2)];
+  const concentration = (p: number) => {
+    let c = 0;
+    let s = 0;
+    for (const b of beats) {
+      c += Math.cos((2 * Math.PI * b) / p);
+      s += Math.sin((2 * Math.PI * b) / p);
+    }
+    return Math.hypot(c, s);
+  };
+  let fit = rough;
+  let fitR = -1;
+  for (let p = rough * 0.9; p <= rough * 1.1; p += rough * 0.0005) {
+    const r = concentration(p);
+    if (r > fitR) [fit, fitR] = [p, r];
+  }
+  for (let p = fit - rough * 0.0005; p <= fit + rough * 0.0005; p += rough * 0.00001) {
+    const r = concentration(p);
+    if (r > fitR) [fit, fitR] = [p, r];
+  }
+  const head = samples.subarray(0, Math.min(samples.length, Math.round(sampleRate * 180)));
+  const sharp = sharpOnsets(head, sampleRate);
+  const bpm = Math.round(refineTempo(sharp, 60 / fit) * 1000) / 1000;
+  const period = 60 / bpm;
+  // The tracker's phase: the circular mean of its beats' phases, then the median deviation from it
+  // (robust to stray beats); then the sharp onsets within ±25 ms of that.
+  let c = 0;
+  let s = 0;
+  for (const b of beats) {
+    c += Math.cos((2 * Math.PI * b) / period);
+    s += Math.sin((2 * Math.PI * b) / period);
+  }
+  const mean = (Math.atan2(s, c) / (2 * Math.PI)) * period;
+  const dev = beats.map((b) => {
+    const d = b - mean;
+    return d - Math.round(d / period) * period;
+  });
+  dev.sort((x, y) => x - y);
+  const tracked = mean + dev[Math.floor(n / 2)];
+  let t0 = tracked;
+  let best = -Infinity;
+  for (let d = -0.025; d <= 0.025; d += 0.0001) {
+    const v = sumAtBeats(sharp, (((tracked + d) % period) + period) % period, period);
+    if (v > best) [t0, best] = [tracked + d, v];
+  }
+  t0 += BEAT_AFTER_ONSET_PEAK;
+  // The beat of the bar most downbeats fall on becomes beat 0 (mod 4).
+  const votes = [0, 0, 0, 0];
+  for (const d of downbeats) ++votes[(((Math.round((d - t0) / period)) % 4) + 4) % 4];
+  const bar = votes.indexOf(Math.max(...votes));
+  let first = Math.ceil(-t0 / period - 1e-9);
+  while ((((first - bar) % 4) + 4) % 4) ++first;
+  const beatTime = t0 + first * period;
+  const est = (b: number, fitness: number): TempoEstimate => ({ bpm: Math.round(b * 1000) / 1000, fitness, beatTime });
+  return [est(bpm, 1), est(bpm * 2, 0.6), est(bpm / 2, 0.4)];
+}
