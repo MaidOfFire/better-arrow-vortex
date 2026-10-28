@@ -490,11 +490,15 @@ export class App implements ActionHost, DialogHost {
         const px = e.deltaY * unit;
         const v = ed.view;
         const ctrl = e.ctrlKey || e.metaKey;
+        // While playing, scroll from where the music is now rather than where the last frame drew it.
+        const playing = ed.audio.playing;
+        if (playing && !ctrl) v.setCursorTime(ed.audio.time);
         if (!ctrl && v.snapType === 0) {
-          // Free scrolling moves by pixels.
-          const ofs = px / Math.abs(v.pixPerOfs);
-          if (v.timeBased) ed.setCursorTime(v.cursorTime + ofs * Math.sign(v.pixPerOfs));
-          else ed.setCursorRow(v.cursorRow + ofs * Math.sign(v.pixPerOfs));
+          // Free scrolling moves by pixels (while playing, without rounding to a row).
+          const ofs = (px / Math.abs(v.pixPerOfs)) * Math.sign(v.pixPerOfs);
+          if (v.timeBased) ed.setCursorTime(v.cursorTime + ofs);
+          else if (playing) ed.setCursorTime(ed.tempo.beatToTime(v.cursorBeat + ofs / ROWS_PER_BEAT));
+          else ed.setCursorRow(v.cursorRow + ofs);
           return;
         }
         // One step per wheel notch; small trackpad deltas accumulate.

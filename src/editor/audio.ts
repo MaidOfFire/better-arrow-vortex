@@ -1,5 +1,12 @@
 // Music playback on the Web Audio clock, plus beat and note tick sounds.
 
+import { gameLeadIn, readMp3Header } from './mp3Lead';
+
+/** Seconds from asking the music to start to its first sample being rendered. */
+const START_DELAY = 0.02;
+/** While scrolling during playback, how often the music may restart (ms). */
+const RESTART_EVERY = 50;
+
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
@@ -21,6 +28,9 @@ export class AudioPlayer {
   /** Song time up to which ticks have been scheduled. */
   private tickHorizon = 0;
   private pausedTime = 0;
+  /** When the music was last (re)started (performance.now()), and a pending restart. */
+  private lastRestart = -Infinity;
+  private restartTimer = 0;
 
   private ensureContext(): AudioContext {
     if (!this.ctx) {
@@ -40,7 +50,18 @@ export class AudioPlayer {
   async load(data: ArrayBuffer): Promise<void> {
     const ctx = this.ensureContext();
     this.stop();
-    this.buffer = await ctx.decodeAudioData(data);
+    // Read before decoding: decodeAudioData takes the data away.
+    const mp3 = readMp3Header(data);
+    const decoded = await ctx.decodeAudioData(data);
+    // MP3s: put back the silence the games play before the browser's first sample (see mp3Lead).
+    const lead = mp3 ? Math.round(gameLeadIn(mp3, decoded.duration) * decoded.sampleRate) : 0;
+    if (lead <= 0) {
+      this.buffer = decoded;
+      return;
+    }
+    const padded = ctx.createBuffer(decoded.numberOfChannels, decoded.length + lead, decoded.sampleRate);
+    for (let c = 0; c < decoded.numberOfChannels; ++c) padded.copyToChannel(decoded.getChannelData(c), c, lead);
+    this.buffer = padded;
   }
 
   unload(): void {
@@ -56,28 +77,51 @@ export class AudioPlayer {
     return this.buffer ? this.buffer.sampleRate : 44100;
   }
 
-  /** Current song time in seconds, compensated for output latency while playing. */
+  /** Current song time in seconds: the music coming out of the speakers now. */
   get time(): number {
     if (!this.playing || !this.ctx) return this.pausedTime;
-    const latency = this.ctx.outputLatency || this.ctx.baseLatency || 0;
-    return this.startSongTime + (this.ctx.currentTime - latency - this.startCtxTime) * this.speed;
+    // Just after play the time waits for the music to be heard rather than jumping back.
+    return this.startSongTime + Math.max(0, this.heardNow() - this.startCtxTime) * this.speed;
+  }
+
+  /**
+   * The context time of the sound leaving the speakers now. currentTime moves in steps of an
+   * audio callback (6-11 ms), which makes scrolling uneven at 60 frames a second; the output
+   * timestamp plus the time since it was taken moves smoothly.
+   */
+  private heardNow(): number {
+    const ctx = this.ctx!;
+    const ts = ctx.state === 'running' && ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+    if (ts?.contextTime && ts.performanceTime) return Math.min(ctx.currentTime, ts.contextTime + (performance.now() - ts.performanceTime) / 1000);
+    return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
   }
 
   play(fromTime: number): void {
     const ctx = this.ensureContext();
     void ctx.resume();
-    this.stopSources();
     this.playing = true;
     this.startSongTime = fromTime;
-    this.startCtxTime = ctx.currentTime + 0.02;
+    this.startCtxTime = ctx.currentTime + START_DELAY;
     this.tickHorizon = fromTime;
-    if (this.buffer && fromTime < this.buffer.duration) {
+    this.restart();
+  }
+
+  /** (Re)starts the music at the song time it will be when its first sample is heard. */
+  private restart(): void {
+    const ctx = this.ctx!;
+    clearTimeout(this.restartTimer);
+    this.restartTimer = 0;
+    this.stopSources();
+    this.lastRestart = performance.now();
+    const when = ctx.currentTime + START_DELAY;
+    const from = this.startSongTime + (when - this.startCtxTime) * this.speed;
+    if (this.buffer && from < this.buffer.duration) {
       const src = ctx.createBufferSource();
       src.buffer = this.buffer;
       src.playbackRate.value = this.speed;
       src.connect(this.gain!);
-      if (fromTime >= 0) src.start(this.startCtxTime, fromTime);
-      else src.start(this.startCtxTime - fromTime / this.speed, 0);
+      if (from >= 0) src.start(when, from);
+      else src.start(when - from / this.speed, 0);
       this.source = src;
     }
   }
@@ -90,13 +134,30 @@ export class AudioPlayer {
 
   /** Stops playback, keeping the paused position. */
   stop(): void {
+    clearTimeout(this.restartTimer);
+    this.restartTimer = 0;
     this.stopSources();
     this.playing = false;
   }
 
   seek(time: number): void {
-    if (this.playing) this.play(time);
-    else this.pausedTime = time;
+    if (!this.playing) {
+      this.pausedTime = time;
+      return;
+    }
+    // Scrolling while playing: the song goes on from the new place at once and the music follows,
+    // restarted at most every RESTART_EVERY ms so a stream of wheel steps does not stutter.
+    this.startSongTime = time;
+    this.startCtxTime = this.heardNow();
+    this.stopTicks();
+    this.tickHorizon = time;
+    if (this.restartTimer) return;
+    const wait = this.lastRestart + RESTART_EVERY - performance.now();
+    if (wait <= 0) return this.restart();
+    this.restartTimer = window.setTimeout(() => {
+      this.restartTimer = 0;
+      if (this.playing) this.restart();
+    }, wait);
   }
 
   setSpeed(speed: number): void {
@@ -129,6 +190,10 @@ export class AudioPlayer {
       this.source.disconnect();
       this.source = null;
     }
+    this.stopTicks();
+  }
+
+  private stopTicks(): void {
     for (const s of this.scheduled) {
       try {
         s.stop();

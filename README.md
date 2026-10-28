@@ -111,7 +111,10 @@ folder); click one to open it again (the browser asks once for access).
   StepMania, Etterna and ArrowVortex skip comments there, so the game sees the same file; editors
   that rewrite the file from scratch (e.g. ArrowVortex) drop the line. Turn it off in the
   Sections menu to keep groups in the browser only.
-- Playback with speed and volume control, beat tick (F3) and note tick (F4).
+- Playback with speed and volume control, beat tick (F3) and note tick (F4). MP3s play on the
+  games' timeline: Etterna, StepMania and ArrowVortex play the encoder's lead-in and an "Info"
+  header frame as silence where browsers cut them, so the editor puts that time back (25 ms for a
+  LAME VBR file, 51 ms for CBR at 44.1 kHz) and offsets from those games line up here.
 - Song properties, chart properties with note counts, NPS and stream breakdown, chart list,
   new/delete chart, chart switching (F5/F6). F1 lists every shortcut.
 
