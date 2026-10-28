@@ -222,7 +222,6 @@ export function createActions(host: ActionHost): Map<string, Action> {
   add('view.notes', 'Show notes', [], toggle('showNotes', 'Notes'), { checked: () => s.showNotes });
   add('view.minimap', 'Show minimap', [], toggle('showMinimap', 'Minimap'), { checked: () => s.showMinimap });
   add('view.chordGraph', 'Show NPS graph', ['shift+g'], toggle('showChordGraph', 'NPS graph'), { enabled: hasSim, checked: () => s.showChordGraph });
-  add('view.syncMap', 'Show sync map', ['shift+o'], toggle('showSyncMap', 'Sync map'), { enabled: hasSim, checked: () => s.showSyncMap });
   add('view.reverse', 'Reverse scroll', [], () => {
     v.reverse = !v.reverse;
     viewChanged(`Reverse scroll: ${v.reverse ? 'on' : 'off'}`);
@@ -459,7 +458,6 @@ export const MENU: { label: string; items: MenuEntry[] }[] = [
       'view.notes',
       'view.minimap',
       'view.chordGraph',
-      'view.syncMap',
       '-',
       'view.reverse',
       '-',

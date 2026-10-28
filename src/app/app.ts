@@ -42,14 +42,13 @@ export class App implements ActionHost, DialogHost {
   private readonly menubar: Menubar;
   private readonly statusbar: Statusbar;
   private readonly chordGraph: ChordGraph;
-  private readonly syncMap: SyncMap;
+  readonly syncMap: SyncMap;
   private readonly hudView = new Hud();
   private readonly welcome: HTMLElement;
   private readonly recentList = h('div', { class: 'recent' });
   private welcomeShown = false;
   private readonly sideViewsButton: HTMLButtonElement;
   private readonly graphButton: HTMLButtonElement;
-  private readonly syncButton: HTMLButtonElement;
   private sideViewsState = '';
   private readonly dialogs = new Map<string, Dialog>();
   private readonly shortcuts = new Map<string, Action>();
@@ -69,15 +68,12 @@ export class App implements ActionHost, DialogHost {
     this.graphButton = button('NPS graph', () => this.run(this.actions.get('view.chordGraph')!));
     this.graphButton.className = 'toolbar-btn';
     this.graphButton.title = 'Notes per second by chord size, one bar per second, in a window you can pin (Shift+G).';
-    this.syncButton = button('Sync map', () => this.run(this.actions.get('view.syncMap')!));
-    this.syncButton.className = 'toolbar-btn';
-    this.syncButton.title = "Where the music's attacks fall around the chart's beats, along the song: in sync, or off and by how much (Shift+O).";
-    this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.syncButton, this.graphButton, this.sideViewsButton);
+    this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.graphButton, this.sideViewsButton);
     this.statusbar = new Statusbar(ed);
     this.canvas = h('canvas', { class: 'notefield', tabindex: 0 });
     this.layer = h('div', { class: 'dialog-layer' });
     this.chordGraph = new ChordGraph(ed, this.layer, () => this.canvas.focus());
-    this.syncMap = new SyncMap(ed, this.layer, () => this.canvas.focus());
+    this.syncMap = new SyncMap(ed, () => this.canvas.focus());
     this.welcome = h(
       'div',
       { class: 'welcome' },
@@ -272,8 +268,6 @@ export class App implements ActionHost, DialogHost {
       this.updateSideViewsButton();
       this.graphButton.disabled = !ed.isOpen;
       this.graphButton.classList.toggle('pressed', ed.settings.showChordGraph);
-      this.syncButton.disabled = !ed.isOpen;
-      this.syncButton.classList.toggle('pressed', ed.settings.showSyncMap);
     }
     requestAnimationFrame(this.frame);
   };

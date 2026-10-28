@@ -61,13 +61,6 @@ export interface Settings {
   sectionDetail: number;
   /** BPM detection in Adjust sync: the built-in onset analysis, or the Beat This! neural beat tracker. */
   tempoDetector: 'classic' | 'beatThis';
-  /** Sync map window: shown, pinned, place and size (as the NPS graph's). */
-  showSyncMap: boolean;
-  syncMapPinned: boolean;
-  syncMapX: number;
-  syncMapY: number;
-  syncMapW: number;
-  syncMapH: number;
 
   jumpToNextNote: boolean;
   undoRedoJump: boolean;
@@ -119,12 +112,6 @@ const DEFAULTS: Settings = {
   sectionsInFile: true,
   sectionDetail: 4,
   tempoDetector: 'classic',
-  showSyncMap: false,
-  syncMapPinned: false,
-  syncMapX: 0.5,
-  syncMapY: 0.5,
-  syncMapW: 0.5,
-  syncMapH: 220,
   sideViews: false,
   sideDepth: 0,
 

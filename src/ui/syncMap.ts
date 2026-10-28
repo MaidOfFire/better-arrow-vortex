@@ -1,4 +1,4 @@
-// Sync map window (see analysis/syncMap.ts): across the song (left to right), where the music's
+// Sync map, in the Adjust sync dialog (see analysis/syncMap.ts): across the song (left to right), where the music's
 // attacks fall around the chart's beats (up: later, down: earlier, ±60 ms). A bright line on the
 // middle is in sync; a line off the middle or wandering shows where and by how much the chart is
 // off. It follows the chart's timing as it is edited. Hover for the numbers, click to go there.
@@ -12,7 +12,6 @@ import { SYNC_RANGE_MS, SYNC_ROWS, beatColumns, localOffsets, type LocalOffset }
 import type { Editor } from '../editor/editor';
 import { mmss } from './chordGraph';
 import { button, h } from './dom';
-import { FloatingWindow } from './floatingWindow';
 
 interface MapData {
   beats: number[];
@@ -24,8 +23,9 @@ interface MapData {
 
 const fmtMs = (ms: number) => `${ms > 0 ? '+' : ms < 0 ? '−' : ''}${Math.abs(ms).toFixed(1)} ms`;
 
+/** One per app (the analysis is kept per music); the Adjust sync dialog shows its element. */
 export class SyncMap {
-  private readonly window: FloatingWindow;
+  readonly el: HTMLElement;
   private readonly canvas = h('canvas', { class: 'panel-canvas' });
   private readonly info = h('div', { class: 'panel-info' });
   /** The onset curve and the music it belongs to (computed once per music, in a worker). */
@@ -41,18 +41,15 @@ export class SyncMap {
 
   constructor(
     private readonly editor: Editor,
-    layer: HTMLElement,
     private readonly onSeek: () => void,
   ) {
-    const keys = { open: 'showSyncMap', pinned: 'syncMapPinned', x: 'syncMapX', y: 'syncMapY', w: 'syncMapW', h: 'syncMapH' } as const;
-    this.window = new FloatingWindow(editor, layer, 'Sync map', keys, 'Shift+O', () => this.draw());
     const fixOffset = button('Fix offset', () => this.fix('offset'), 'Move the whole grid by the typical difference (every BPM marker keeps its beat and value)');
     const fixBpms = button(
       'Fix offset + BPMs',
       () => this.fix('bpms'),
       'Also set every BPM marker\'s value so the beats follow the music everywhere: markers keep their beats, sections just run a little faster or slower',
     );
-    this.window.body.append(h('div', { class: 'panel-plot' }, this.canvas), h('div', { class: 'panel-footer' }, this.info, fixOffset, fixBpms));
+    this.el = h('div', { class: 'sync-map' }, h('div', { class: 'panel-plot' }, this.canvas), h('div', { class: 'panel-footer' }, this.info, fixOffset, fixBpms));
     new ResizeObserver(() => this.draw()).observe(this.canvas);
 
     const c = this.canvas;
@@ -79,12 +76,12 @@ export class SyncMap {
     });
   }
 
-  /** Called whenever the editor redraws. */
+  /** Called whenever the editor redraws (draws only while the dialog shows it). */
   update(): void {
-    if (this.window.update()) this.draw();
+    if (this.el.isConnected) this.draw();
   }
 
-  /** Starts the onset analysis when the window shows music it has not analyzed yet. */
+  /** Starts the onset analysis when the map shows music it has not analyzed yet. */
   private ensureCurve(): OnsetCurve | null {
     const buffer = this.editor.audio.buffer;
     if (!buffer) return null;
@@ -207,7 +204,7 @@ export class SyncMap {
     const c = this.canvas;
     const w = c.clientWidth;
     const hgt = c.clientHeight;
-    if (this.window.el.hidden || !ed.isOpen || !w || !hgt) return;
+    if (!this.el.isConnected || !ed.isOpen || !w || !hgt) return;
     const dpr = window.devicePixelRatio || 1;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(hgt * dpr)) {
       c.width = Math.round(w * dpr);

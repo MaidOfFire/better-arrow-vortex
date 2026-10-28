@@ -42,9 +42,9 @@ folder); click one to open it again (the browser asks once for access).
   stretch on screen, and the line below names the chords in the second under the mouse (or the
   cursor); click or drag to jump there. Unpinned, the window closes on a click elsewhere; pinned,
   it stays open while you edit and comes back next time, with its size and place.
-- Sync map (button at the top right, Shift+O, View > Show sync map, or from Adjust Sync): for
+- Sync map, in the Adjust Sync dialog (Tempo > Adjust sync, Shift+S): for
   every beat of the chart's grid, where the music's attacks fall from 60 ms before to 60 ms
-  after it, side by side along the song, in a window like the NPS graph. A bright line on the
+  after it, side by side along the song. A bright line on the
   middle means the chart is in sync there; a line above it means the music comes after the beats,
   below it before, and a line that wanders shows sync that is right in one place and off in
   another. A blue trace measures it every 8 beats; hover for the number at any point (e.g. "7:48

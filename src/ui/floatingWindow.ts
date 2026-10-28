@@ -1,4 +1,4 @@
-// A floating window over the notefield (NPS graph, sync map): starts half as wide as the editor,
+// A floating window over the notefield (the NPS graph): starts half as wide as the editor,
 // drag it by its title, resize it from the corner. Unpinned it is a popup that closes on a click
 // elsewhere; pinned it stays open, also in the next session. Its state lives in the settings.
 

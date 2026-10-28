@@ -10,11 +10,14 @@ import type { CopyTransform, SectionGroup } from '../editor/sections';
 import { GAME_STYLES, findStyle } from '../model/styles';
 import { DIFFICULTIES, ROWS_PER_BEAT, ROWS_PER_MEASURE, type Difficulty, type MetaTag } from '../model/types';
 import { button, field, h, numberInput, select, setIfIdle, textInput } from './dom';
+import type { SyncMap } from './syncMap';
 
 export interface DialogHost {
   editor: Editor;
   actions: Map<string, Action>;
   layer: HTMLElement;
+  /** Shown in the Adjust sync dialog; kept by the app so its analysis survives the dialog. */
+  syncMap: SyncMap;
   closeDialog(d: Dialog): void;
   loadMusic(): Promise<void>;
 }
@@ -323,7 +326,7 @@ class AdjustSyncDialog extends Dialog {
   private bpmInput!: HTMLInputElement;
 
   constructor(host: DialogHost) {
-    super('adjustSync', 'Adjust sync', host, 320);
+    super('adjustSync', 'Adjust sync', host, 560);
   }
 
   build(): void {
@@ -338,17 +341,6 @@ class AdjustSyncDialog extends Dialog {
       row(button('−10ms', tweakOffset(-0.01)), button('−1ms', tweakOffset(-0.001)), button('+1ms', tweakOffset(0.001)), button('+10ms', tweakOffset(0.01))),
       field('Initial BPM', this.bpmInput),
       row(button('−0.1', tweakBpm(-0.1)), button('−0.01', tweakBpm(-0.01)), button('+0.01', tweakBpm(0.01)), button('+0.1', tweakBpm(0.1))),
-      row(
-        button(
-          'Sync map',
-          () => {
-            ed.settings.showSyncMap = true;
-            ed.saveSettings();
-            ed.changed();
-          },
-          "Show where the music's attacks fall around the beats along the whole song (Shift+O)",
-        ),
-      ),
       section('Move first beat'),
       row(
         button('+1 beat', () => ed.shiftOffsetByBeats(1), 'Increase the music offset by one beat'),
@@ -401,6 +393,13 @@ class AdjustSyncDialog extends Dialog {
           'Line the grid up with the detected beats and keep every BPM marker: all markers move together, by less than a beat',
         ),
       ),
+      section('Sync map'),
+      h(
+        'p',
+        { class: 'hint' },
+        "Where the music's attacks fall around the chart's beats, along the song: a bright line on the middle is in sync, above it the music comes after the beats, below before. It follows your edits; hover for the numbers, click to go there.",
+      ),
+      this.host.syncMap.el,
     );
   }
 

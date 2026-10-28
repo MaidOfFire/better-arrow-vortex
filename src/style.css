@@ -343,7 +343,7 @@ canvas.notefield {
   padding: 0 4px;
 }
 
-/* Floating windows (NPS graph, sync map) ------------------------------------------------------ */
+/* Floating windows (NPS graph) ----------------------------------------------------------------- */
 
 .dialog.float-window {
   width: 50%;
@@ -404,6 +404,14 @@ canvas.notefield {
   width: 100%;
   height: 100%;
   cursor: pointer;
+}
+
+/* The sync map inside the Adjust sync dialog. */
+.sync-map {
+  display: flex;
+  flex-direction: column;
+  height: 190px;
+  gap: 4px;
 }
 
 .panel-footer {
