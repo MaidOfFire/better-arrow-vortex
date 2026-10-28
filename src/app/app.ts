@@ -42,6 +42,7 @@ export class App implements ActionHost, DialogHost {
   private readonly hudView = new Hud();
   private readonly welcome: HTMLElement;
   private readonly sideViewsButton: HTMLButtonElement;
+  private readonly graphButton: HTMLButtonElement;
   private sideViewsState = '';
   private readonly dialogs = new Map<string, Dialog>();
   private readonly shortcuts = new Map<string, Action>();
@@ -58,7 +59,10 @@ export class App implements ActionHost, DialogHost {
     this.menubar = new Menubar(this.actions, (a) => this.run(a));
     this.sideViewsButton = button('Side views', () => this.run(this.actions.get('sections.compare')!));
     this.sideViewsButton.className = 'toolbar-btn';
-    this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.sideViewsButton);
+    this.graphButton = button('NPS graph', () => this.run(this.actions.get('view.chordGraph')!));
+    this.graphButton.className = 'toolbar-btn';
+    this.graphButton.title = 'Notes per second by chord size, one bar per second, along the bottom (Shift+G).';
+    this.menubar.el.append(h('div', { class: 'menu-spacer' }), this.graphButton, this.sideViewsButton);
     this.statusbar = new Statusbar(ed);
     this.canvas = h('canvas', { class: 'notefield', tabindex: 0 });
     this.chordGraph = new ChordGraph(ed, () => this.canvas.focus());
@@ -211,6 +215,8 @@ export class App implements ActionHost, DialogHost {
       this.chordGraph.update();
       this.statusbar.update();
       this.updateSideViewsButton();
+      this.graphButton.disabled = !ed.isOpen;
+      this.graphButton.classList.toggle('pressed', ed.settings.showChordGraph);
     }
     requestAnimationFrame(this.frame);
   };

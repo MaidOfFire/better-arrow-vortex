@@ -21,7 +21,7 @@ export interface Settings {
   showTempoBoxes: boolean;
   showMinimap: boolean;
   minimapMode: 'notes' | 'density';
-  /** Etterna-style notes per second graph, split by chord size, along the bottom. */
+  /** Etterna-style notes per second graph, split by chord size, along the bottom (off until asked for). */
   showChordGraph: boolean;
   /** An image skin id (see IMAGE_SKINS) or a built-in drawn skin. */
   noteskin: 'dividebyzero' | 'arrows' | 'bars';
@@ -77,7 +77,7 @@ const DEFAULTS: Settings = {
   showTempoBoxes: true,
   showMinimap: true,
   minimapMode: 'notes',
-  showChordGraph: true,
+  showChordGraph: false,
   noteskin: 'dividebyzero',
   boldHolds: true,
   audioView: 'onsets',

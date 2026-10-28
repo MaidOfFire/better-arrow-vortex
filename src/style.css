@@ -150,8 +150,8 @@ canvas.notefield {
 .chord-graph {
   position: relative;
   flex: none;
-  height: 48px;
-  padding: 4px 8px;
+  height: 26px;
+  padding: 2px 8px;
   background: var(--panel);
   border-top: 1px solid var(--border);
 }
@@ -581,6 +581,10 @@ table {
   margin: 2px 8px;
   padding: 1px 10px;
   font-size: 12px;
+}
+
+.toolbar-btn + .toolbar-btn {
+  margin-left: 0;
 }
 
 .toolbar-btn.pressed {

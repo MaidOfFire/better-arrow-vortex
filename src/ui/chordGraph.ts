@@ -178,13 +178,18 @@ export class ChordGraph {
     ctx.fillRect(Math.round(xOf(cursor)) - 1, 0, 2, hgt);
 
     // The 70% line's label moves to the other end while the mouse is over it, as in Til' Death.
+    // A tag sitting on the line, so it stays legible in a short strip.
     const label = `${fmtNum(d.peak * 0.7, 1)} NPS`;
-    ctx.font = 'bold 10px system-ui, sans-serif';
-    ctx.textBaseline = 'bottom';
-    const right = this.hoverX !== null && this.hoverX < ctx.measureText(label).width + 12;
-    ctx.textAlign = right ? 'right' : 'left';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const lw = Math.ceil(ctx.measureText(label).width) + 6;
+    const lx = this.hoverX !== null && this.hoverX < lw + 12 ? w - lw - 2 : 2;
+    const ly = Math.round(hgt - 0.7 * (hgt - 2));
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(lx, ly - 5, lw, 10);
     ctx.fillStyle = '#d00000';
-    ctx.fillText(label, right ? w - 4 : 4, Math.round(hgt - 0.7 * (hgt - 2)) - 2);
+    ctx.fillText(label, lx + 3, ly);
 
     if (this.hoverX === null) {
       this.tip.hidden = true;
