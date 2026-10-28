@@ -86,6 +86,27 @@ describe('section detection', () => {
     expect([b.length, b.starts]).toEqual([24, [38, 160]]);
   });
 
+  it('keeps only occurrences that line up with the rest of their group', async () => {
+    const { confirmGroups, SimilarityIndex } = await import('../src/analysis/structure');
+    // 180 is not a copy of the planted section, just some other music.
+    const out = confirmGroups(new SimilarityIndex(f), [{ length: 48, starts: [12, 112, 180], score: 1 }], 0.1, 10);
+    expect(out.map((g) => g.starts)).toEqual([[12, 112]]);
+  });
+
+  it('never lets two groups half overlap, and fits found groups around ones marked by hand', async () => {
+    const { confirmGroups, SimilarityIndex } = await import('../src/analysis/structure');
+    // A: [12, 60) again at 112. B: [40, 72) again at 190, so B's first occurrence half overlaps A's.
+    const f2 = features(240, 12, 48, 112);
+    f2.data.copyWithin(190 * f2.dims, 40 * f2.dims, 72 * f2.dims);
+    const a = () => ({ length: 48, starts: [12, 112], score: 1 });
+    const b = () => ({ length: 32, starts: [40, 190], score: 1 });
+    const index = new SimilarityIndex(f2);
+    // The bigger, surer A wins; B would be left with one occurrence.
+    expect(confirmGroups(index, [a(), b()], 0.1, 10).map((g) => g.starts)).toEqual([[12, 112]]);
+    // Marked by hand, B stays as it is and A loses the occurrence that clashes with it.
+    expect(confirmGroups(index, [a()], 0.1, 10, [b()])).toEqual([]);
+  });
+
   it('ranks the repeat first for find-similar', () => {
     expect(rankMatches(f, 20, 16)[0].start).toBe(120);
   });

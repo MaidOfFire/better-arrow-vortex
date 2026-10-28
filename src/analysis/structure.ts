@@ -220,20 +220,23 @@ export function findRepeats(
   const starts: number[] = [];
   for (let i = 0; i + window <= f.beats; i += step) starts.push(i);
   // First windows on the step grid, second windows at every beat, so lags are exact.
-  const pairs: { a: number; b: number; s: number }[] = [];
+  const pairs: { a: number; b: number; s: number; c: number }[] = [];
   for (const a of starts) {
-    for (let b = a + window; b + window <= f.beats; ++b) pairs.push({ a, b, s: index.window(a, b, window) });
+    for (let b = a + window; b + window <= f.beats; ++b) pairs.push({ a, b, s: index.window(a, b, window), c: alignedContrast(index, a, b, window) });
   }
   if (!pairs.length) return [];
-  const sorted = pairs.map((p) => p.s).sort((x, y) => x - y);
-  // Strong pairs: the top 1% (by default), but never stricter than 0.8 (when repeats are most of
-  // that top 1%, the percentile would land on their own score and cut them apart).
-  const threshold = Math.max(0.3, Math.min(0.8, sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * strong))]));
+  const sorted = pairs.map((p) => p.c).sort((x, y) => x - y);
+  // Strong pairs line up sharply: they match clearly better at their exact offset than a few beats
+  // off (the top 1% by default, within fixed bounds), and sound at least somewhat alike. Raw
+  // similarity alone also catches music that keeps one texture throughout, and in songs made of
+  // such music the real repeats do not stand out from it.
+  const threshold = Math.max(0.08, Math.min(0.25, sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * strong))]));
+  const MIN_SIMILAR = 0.25;
 
   // Runs of strong windows along each lag.
   const byLag = new Map<number, { a: number; s: number }[]>();
   for (const p of pairs) {
-    if (p.s < threshold) continue;
+    if (p.c < threshold || p.s < MIN_SIMILAR) continue;
     const lag = p.b - p.a;
     let list = byLag.get(lag);
     if (!list) byLag.set(lag, (list = []));
@@ -247,11 +250,12 @@ export function findRepeats(
       if (k < list.length && list[k].a - list[k - 1].a <= step) continue;
       const seg = list.slice(first, k);
       // Windows that only partly overlap the repeat still score high, so trim whole steps
-      // (measures) at both ends that do not match on their own.
+      // (measures) at both ends that do not line up on their own.
       let a = seg[0].a;
       let end = seg[seg.length - 1].a + window;
-      while (end - a > step && windowSimilarity(f, a, a + lag, step) < threshold) a += step;
-      while (end - a > step && windowSimilarity(f, end - step, end - step + lag, step) < threshold) end -= step;
+      const weak = (x: number) => index.window(x, x + lag, step) < MIN_SIMILAR || alignedContrast(index, x, x + lag, step) < threshold / 2;
+      while (end - a > step && weak(a)) a += step;
+      while (end - a > step && weak(end - step)) end -= step;
       const length = end - a;
       if (length >= minLength && length <= maxLength) {
         runs.push({ a, b: a + lag, length, score: seg.reduce((t, p) => t + p.s, 0) / seg.length });
@@ -311,15 +315,15 @@ export function findRepeats(
 
 /**
  * How much detection looks for, from 1 (only the clearest big sections) to 5 (every repeat it
- * can find): how many of the three scales it searches, how many groups it keeps, and which share
- * of all window pairs counts as alike (0.99: the top 1%).
+ * can find): how many of the three scales it searches, which share of all window pairs counts as
+ * alike (0.99: the top 1%), how sure a group must be (see confirmGroups) and how many are kept.
  */
 export const DETAIL_LEVELS = [
-  { scales: 1, maxGroups: 4, perScale: 12, strong: 0.99, label: 'Only the clearest big sections' },
-  { scales: 1, maxGroups: 12, perScale: 12, strong: 0.99, label: 'Big sections' },
-  { scales: 2, maxGroups: 18, perScale: 12, strong: 0.99, label: 'Sections and the parts repeating inside them' },
-  { scales: 3, maxGroups: 24, perScale: 16, strong: 0.99, label: 'Sections, parts and short figures' },
-  { scales: 3, maxGroups: 40, perScale: 24, strong: 0.98, label: 'Everything, also fainter and shorter repeats' },
+  { scales: 1, maxGroups: 4, perScale: 12, strong: 0.99, minConfidence: 0.15, label: 'Only the clearest big sections' },
+  { scales: 1, maxGroups: 12, perScale: 12, strong: 0.99, minConfidence: 0.12, label: 'Big sections' },
+  { scales: 2, maxGroups: 18, perScale: 12, strong: 0.99, minConfidence: 0.1, label: 'Sections and the parts repeating inside them' },
+  { scales: 3, maxGroups: 24, perScale: 16, strong: 0.99, minConfidence: 0.1, label: 'Sections, parts and short figures' },
+  { scales: 3, maxGroups: 40, perScale: 24, strong: 0.98, minConfidence: 0.06, label: 'Everything, also fainter and shorter repeats' },
 ] as const;
 export const DEFAULT_DETAIL = 4;
 
@@ -330,9 +334,11 @@ export const DEFAULT_DETAIL = 4;
  * that describes the same stretches as one already found (similar length, mostly the same beats)
  * is dropped. The nesting itself is derived later from which occurrences contain which.
  */
-export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine = true): RepeatGroup[] {
+export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine = true, fixed: RepeatGroup[] = []): RepeatGroup[] {
   const level = DETAIL_LEVELS[Math.min(DETAIL_LEVELS.length, Math.max(1, Math.round(detail))) - 1];
-  const { maxGroups, perScale, strong } = level;
+  const { maxGroups, perScale, strong, minConfidence } = level;
+  // Pool more than will be kept: confirming drops some, and the cap applies to what is left.
+  const poolSize = Math.max(24, maxGroups);
   const index = new SimilarityIndex(f);
   const scales = [
     () => findRepeats(f, 16, 4, 32, perScale, Infinity, index, strong),
@@ -360,26 +366,14 @@ export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine =
     }
     return both >= 0.6 * Math.min(na, nb);
   };
-  // The same repeat found at another scale can have occurrences this one missed: add them, lined
-  // up through an occurrence both have (refining settles the last beat).
-  const absorb = (p: RepeatGroup, g: RepeatGroup) => {
-    const covers = (s: number, t: number) => overlap(s, s + g.length, t, t + p.length) >= 0.5 * Math.min(g.length, p.length);
-    let d: number | null = null;
-    for (const s of g.starts) for (const t of p.starts) if (d === null && covers(s, t)) d = t - s;
-    if (d === null) return;
-    for (const s of g.starts) {
-      const at = Math.min(f.beats - p.length, Math.max(0, s + d));
-      if (p.starts.every((t) => overlap(at, at + p.length, t, t + p.length) < 0.5 * p.length)) p.starts.push(at);
-    }
-    p.starts.sort((x, y) => x - y);
-  };
   const pooled: RepeatGroup[] = [];
   for (const scale of scales) {
     // Strongest first, so the cap below keeps the clearest repeats of each scale.
     for (const g of [...scale].sort((p, q) => q.score * q.length * q.starts.length - p.score * p.length * p.starts.length)) {
-      if (pooled.length >= maxGroups) break;
+      if (pooled.length >= poolSize) break;
       const same = pooled.find((p) => sameRepeat(p, g));
-      if (same) absorb(same, g);
+      // The same repeat found at another scale can have occurrences this one missed.
+      if (same) absorbGroup(f, same, g);
       else pooled.push(g);
     }
   }
@@ -412,7 +406,124 @@ export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine =
     }
   }
   resolveEdgeOverlaps(f, pooled);
-  return pooled.sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+  return confirmGroups(index, pooled, minConfidence, maxGroups, fixed).sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+}
+
+/**
+ * Adds the occurrences of `g` that `p` lacks, lined up through an occurrence both have (refining
+ * or the caller settles the last beat). Returns the starts that were added.
+ */
+function absorbGroup(f: BeatFeatures, p: RepeatGroup, g: RepeatGroup, offset?: number): number[] {
+  const covers = (s: number, t: number) => overlap(s, s + g.length, t, t + p.length) >= 0.5 * Math.min(g.length, p.length);
+  let d: number | null = offset ?? null;
+  for (const s of g.starts) for (const t of p.starts) if (d === null && covers(s, t)) d = t - s;
+  if (d === null) return [];
+  const added: number[] = [];
+  for (const s of g.starts) {
+    const at = Math.min(f.beats - p.length, Math.max(0, s + d));
+    if (p.starts.every((t) => overlap(at, at + p.length, t, t + p.length) < 0.5 * p.length)) {
+      p.starts.push(at);
+      added.push(at);
+    }
+  }
+  p.starts.sort((x, y) => x - y);
+  return added;
+}
+
+/**
+ * How much better two stretches match at their exact offset than with the second shifted by 1–3
+ * beats. A real repeat lines up on one beat (about 0.15 and up); music that keeps one sound or
+ * texture matches about as well at any shift (near 0), however alike it sounds.
+ */
+export function alignedContrast(index: SimilarityIndex, a: number, b: number, len: number): number {
+  const beats = index.f.beats;
+  const w = (x: number, y: number) => index.window(Math.min(x, y), Math.max(x, y), len);
+  let off = 0;
+  let n = 0;
+  for (const d of [-3, -2, -1, 1, 2, 3]) {
+    const y = b + d;
+    if (y < 0 || y + len > beats || y === a) continue;
+    off += w(a, y);
+    ++n;
+  }
+  return n && a !== b ? w(a, b) - off / n : 0;
+}
+
+/** Below this an occurrence does not line up with the rest of its group (see alignedContrast). */
+const MIN_OCCURRENCE = 0.08;
+
+/**
+ * Keeps what the music clearly supports. Each group loses occurrences that do not line up with
+ * the others and gets its confidence (how well its occurrences line up, on average) as score;
+ * groups below `minConfidence` go. Then, surest and biggest first, groups may only nest (an
+ * occurrence inside one at least 1.5 times as long) or touch: an occurrence partly overlapping
+ * a stronger group's is dropped, and a group that is nearly the same as a stronger one (one of
+ * its occurrences on top of one of the other's, similar length) is merged into it. At most
+ * `maxGroups` are kept. `fixed` groups (marked by hand) count as stronger than all and are left
+ * as they are: a group that is nearly the same as one of them is dropped instead of merged.
+ */
+export function confirmGroups(index: SimilarityIndex, groups: RepeatGroup[], minConfidence: number, maxGroups: number, fixed: RepeatGroup[] = []): RepeatGroup[] {
+  const pair = (len: number, a: number, b: number) => (alignedContrast(index, a, b, len) + alignedContrast(index, b, a, len)) / 2;
+  const fit = (g: RepeatGroup, s: number) => g.starts.reduce((sum, t) => (t === s ? sum : sum + pair(g.length, s, t)), 0) / (g.starts.length - 1);
+  const prune = (g: RepeatGroup) => {
+    while (g.starts.length >= 2) {
+      const fits = g.starts.map((s) => fit(g, s));
+      const sorted = [...fits].sort((x, y) => x - y);
+      const worst = fits.indexOf(sorted[0]);
+      // Far below the rest (or below the floor): it does not belong.
+      if (sorted[0] >= Math.max(MIN_OCCURRENCE, 0.4 * sorted[Math.floor(sorted.length / 2)])) break;
+      g.starts.splice(worst, 1);
+    }
+    g.score = g.starts.length >= 2 ? g.starts.reduce((t, s) => t + fit(g, s), 0) / g.starts.length : 0;
+  };
+  for (const g of groups) prune(g);
+  const rank = (g: RepeatGroup) => g.score * g.length * g.starts.length;
+  const candidates = groups.filter((g) => g.starts.length >= 2 && g.score >= minConfidence).sort((p, q) => rank(q) - rank(p));
+
+  // Inside: sticking out by at most 15% of its length, and never more than a measure.
+  const inside = (s: number, len: number, t: number, tlen: number) => overlap(s, s + len, t, t + tlen) >= len - Math.min(4, 0.15 * len);
+  /** How an occurrence [x, x+len) relates to group p: fine (apart, touching or nested), the same stretch, or a clash. */
+  const relation = (x: number, len: number, p: RepeatGroup): { kind: 'fine' } | { kind: 'same'; d: number } | { kind: 'clash' } => {
+    const ratio = Math.max(len, p.length) / Math.min(len, p.length);
+    for (const y of p.starts) {
+      if (overlap(x, x + len, y, y + p.length) <= 2) continue;
+      const nested = inside(x, len, y, p.length) || inside(y, p.length, x, len);
+      if (nested && ratio >= 1.5) continue;
+      return nested ? { kind: 'same', d: y - x } : { kind: 'clash' };
+    }
+    return { kind: 'fine' };
+  };
+  const accepted: RepeatGroup[] = [...fixed];
+  for (const g of candidates) {
+    if (accepted.length - fixed.length >= maxGroups) break;
+    let twin: { p: RepeatGroup; d: number } | null = null;
+    const kept: number[] = [];
+    for (const x of g.starts) {
+      let ok = true;
+      for (const p of accepted) {
+        const r = relation(x, g.length, p);
+        if (r.kind === 'same') twin ??= { p, d: r.d };
+        if (r.kind === 'clash') ok = false;
+      }
+      if (ok) kept.push(x);
+    }
+    if (twin) {
+      // The same section found twice: its other occurrences join the stronger group when they line
+      // up with it and clash with nothing (groups marked by hand are not changed).
+      const { p, d } = twin;
+      if (fixed.includes(p)) continue;
+      for (const at of absorbGroup(index.f, p, g, d)) {
+        const clash = accepted.some((q) => q !== p && relation(at, p.length, q).kind !== 'fine');
+        if (clash || fit(p, at) < MIN_OCCURRENCE) p.starts.splice(p.starts.indexOf(at), 1);
+      }
+      continue;
+    }
+    g.starts = kept;
+    if (g.starts.length < 2) continue;
+    prune(g);
+    if (g.score >= minConfidence) accepted.push(g);
+  }
+  return accepted.slice(fixed.length);
 }
 
 /**

@@ -53,18 +53,24 @@ folder); click one to open it again (the browser asks once for access).
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),
   at three scales so that repeats nest: whole sections, the parts that repeat inside them (e.g. a
-  chorus phrase) and smaller figures. A detail slider in the Similar sections dialog (also
-  Sections > Detection detail) has five steps: 1 keeps only the clearest big sections, 2 all big
-  sections, 3 adds the parts inside them, 4 (default) adds short figures, 5 also fainter and
-  shorter repeats; moving it redetects in a moment (the per-beat analysis is reused) and keeps
-  groups made by hand. Occurrences are matched at any beat offset, also when a
+  chorus phrase) and smaller figures. A repeat counts only when it lines up sharply: its
+  occurrences must match clearly better at their exact offset than a beat or three off, so music
+  that just keeps one sound throughout is not taken for a repeat. Occurrences that do not line up
+  with the rest of their group are dropped, each group's confidence is shown in the dialog
+  (faint, clear, very clear), and groups never half overlap: two groups either nest or sit side
+  by side (the surer one wins; a near copy of a group is merged into it). Groups marked by hand
+  are kept as they are and found groups fit around them. A detail slider beside "Detect
+  automatically" (also Sections > Detection detail) has five steps: 1 keeps only the clearest big
+  sections, 2 all big sections, 3 adds the parts inside them, 4 (default) adds short figures, 5
+  also fainter and shorter repeats; moving it redetects in a moment (the per-beat analysis is
+  reused). Found groups are refreshed whenever a song loads. Occurrences are matched at any beat offset, also when a
   repeat is not a whole number of measures later, and each group's start and end are then moved
   beat by beat to where its occurrences stop sounding alike; where two neighbouring sections
   both claim a few beats, each keeps the beats its own occurrences agree on more. The nesting
   follows from which occurrences contain which, also for groups marked by hand, and names follow
-  it (D → Da → Da1). The minimap has one lane per level (sections of one level that partly
-  overlap are drawn side by side; levels past the third are a narrower stripe inside their
-  parent's block), brackets beside the notes get a column per level, the status bar shows the path (E#1 › Ea#1: occurrence 1 of E, occurrence 1 of Ea), and in side views `{` / `}` switch between
+  it (D → Da → Da1): a group sits one level below the deepest group it lies inside. The minimap
+  has one lane per level (levels past the third are a narrower stripe inside their parent's
+  block; hand-made groups of one level that partly overlap are drawn side by side), brackets beside the notes get a column per level, the status bar shows the path (E#1 › Ea#1: occurrence 1 of E, occurrence 1 of Ea), and in side views `{` / `}` switch between
   following whole sections and the parts inside them;
   and can be marked by hand (group from a Tab region, add the cursor position with Shift+A, or
   "find similar to selection"). Groups show as brackets beside the notes and on the minimap and

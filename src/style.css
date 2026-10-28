@@ -622,22 +622,20 @@ table {
   background: var(--accent);
 }
 
-.detail {
-  margin: 6px 0 2px;
-}
-
-.detail-row {
+.detect-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 12px;
+  margin: 4px 0 0;
 }
 
-.detail-row > .hint {
-  line-height: 20px;
+.detect-row > button {
+  flex: none;
 }
 
 .detail-box {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -688,8 +686,7 @@ table {
 
 .detail-label {
   font-size: 12px;
-  text-align: center;
-  margin-top: 2px;
+  margin: 4px 0 0;
 }
 
 .section-list {

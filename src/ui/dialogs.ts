@@ -650,6 +650,11 @@ class ShortcutsDialog extends Dialog {
   refresh(): void {}
 }
 
+/** A found group's confidence (see confirmGroups) in words. */
+function confidenceWord(score: number): string {
+  return score >= 0.25 ? 'very clear' : score >= 0.15 ? 'clear' : 'faint';
+}
+
 class SectionsDialog extends Dialog {
   private copyFrom = 0;
   private copyTo = 1;
@@ -668,9 +673,15 @@ class SectionsDialog extends Dialog {
         : !ed.audio.buffer
           ? 'Load the music to detect sections.'
           : `${sec.groups.length} group(s). Detection follows the chart's beat grid, so set BPM/offset first.`;
+    const detail = this.detailSlider();
     this.body.append(
-      row(button('Detect automatically', () => void sec.analyze(true), 'Find repeated sections in the music (keeps groups you made or edited)')),
-      this.detailSlider(),
+      h(
+        'div',
+        { class: 'detect-row' },
+        button('Detect automatically', () => void sec.analyze(true), 'Find repeated sections in the music (keeps groups you made or edited)'),
+        detail.control,
+      ),
+      detail.label,
       h('p', { class: 'hint' }, status),
     );
 
@@ -734,8 +745,8 @@ class SectionsDialog extends Dialog {
     );
   }
 
-  /** Five steps from only the clearest big sections to every repeat detection can find. */
-  private detailSlider(): HTMLElement {
+  /** Five steps from only the clearest big sections (1) to every repeat detection can find (5). */
+  private detailSlider(): { control: HTMLElement; label: HTMLElement } {
     const ed = this.ed;
     const n = DETAIL_LEVELS.length;
     const describe = (v: number) => `${v}/${n} · ${DETAIL_LEVELS[v - 1].label}`;
@@ -757,18 +768,13 @@ class SectionsDialog extends Dialog {
         ed.sections.setDetail(i + 1);
       }),
     );
-    return h(
+    const control = h(
       'div',
-      { class: 'detail', title: 'How much automatic detection finds. Groups you made or edited are kept.' },
-      h(
-        'div',
-        { class: 'detail-row' },
-        h('span', { class: 'hint' }, 'Basic'),
-        h('div', { class: 'detail-box' }, slider, h('div', { class: 'detail-ticks' }, ...ticks)),
-        h('span', { class: 'hint' }, 'Detailed'),
-      ),
-      label,
+      { class: 'detail-box', title: 'Detail: from only the clearest big sections (1) to everything (5). Groups you made or edited are kept.' },
+      slider,
+      h('div', { class: 'detail-ticks' }, ...ticks),
     );
+    return { control, label };
   }
 
   private groupRow(g: SectionGroup, depth: number): HTMLElement {
@@ -783,7 +789,9 @@ class SectionsDialog extends Dialog {
       h('span', { class: 'swatch', style: `background:${sec.colorOf(g)}` }),
       h('b', {}, sec.nameOf(g)),
       h('span', {}, ` ${measures} measures ×${g.starts.length}`),
-      h('span', { class: 'hint' }, g.auto ? ` auto ${g.score?.toFixed(2) ?? ''}` : ' manual'),
+      g.auto
+        ? h('span', { class: 'hint', title: `How well its occurrences line up: ${g.score?.toFixed(2) ?? '?'}` }, ` auto · ${confidenceWord(g.score ?? 0)}`)
+        : h('span', { class: 'hint' }, ' manual'),
       h('span', { class: 'spacer' }),
       button('×', () => sec.removeGroup(g), 'Delete this group'),
     );

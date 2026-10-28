@@ -126,28 +126,38 @@ export class SectionManager {
   private treeCache: { version: number; groups: SectionGroup[]; value: SectionTree } | null = null;
 
   /**
-   * The nesting of groups, derived from their occurrences: a group's parent is the smallest
-   * group at least 1.5 times as long that contains the most of its occurrences.
+   * The nesting of groups, derived from their occurrences. A group sits one level below the
+   * deepest longer group that holds one of its occurrences, so nothing it lies inside shares its
+   * level (or minimap lane). That group is its parent (for the name); among equally deep ones,
+   * the one holding most of its occurrences, then the shortest.
    */
   private tree(): SectionTree {
     const c = this.treeCache;
     if (c && c.version === this.version && c.groups === this.groups) return c.value;
     const groups = this.groups;
+    // Inside: sticking out by at most 15% of its length and a measure (as detection allows).
     const inside = (child: SectionGroup, start: number, parent: SectionGroup) =>
-      parent.starts.some((p) => Math.min(start + child.length, p + parent.length) - Math.max(start, p) >= 0.9 * child.length);
+      parent.starts.some((p) => Math.min(start + child.length, p + parent.length) - Math.max(start, p) >= child.length - Math.min(ROWS_PER_BEAT * 4, 0.15 * child.length));
     const parent = new Map<number, SectionGroup | null>();
-    for (const g of groups) {
+    const level = new Map<number, number>();
+    // Longest first, so every possible parent is placed before its parts.
+    for (const g of [...groups].sort((a, b) => b.length - a.length)) {
       let best: SectionGroup | null = null;
+      let bestLevel = -1;
       let bestCount = 0;
       for (const p of groups) {
-        if (p === g || p.length < 1.5 * g.length) continue;
+        if (p.length <= g.length) continue;
         const count = g.starts.filter((st) => inside(g, st, p)).length;
-        if (count > bestCount || (count === bestCount && count > 0 && best && p.length < best.length)) {
+        if (!count) continue;
+        const l = level.get(p.id) ?? 0;
+        if (l > bestLevel || (l === bestLevel && (count > bestCount || (count === bestCount && best && p.length < best.length)))) {
           best = p;
+          bestLevel = l;
           bestCount = count;
         }
       }
       parent.set(g.id, best);
+      level.set(g.id, bestLevel + 1);
     }
     const children = new Map<number | null, SectionGroup[]>();
     for (const g of groups) {
@@ -281,11 +291,11 @@ export class SectionManager {
   }
 
   /**
-   * Computes beat features for the current beat grid. With `replaceAuto`, the automatically
-   * found groups are replaced (manual groups are kept); otherwise auto groups are only added
-   * when the song has no saved groups yet.
+   * Finds similar sections for the current beat grid and detail level and replaces the
+   * automatically found groups with them (groups marked or edited by hand stay). `byUser`: the
+   * user asked for it (the file counts as changed and the count is shown), rather than loading.
    */
-  async analyze(replaceAuto: boolean): Promise<void> {
+  async analyze(byUser: boolean): Promise<void> {
     const ed = this.ed;
     const buffer = ed.audio.buffer;
     if (!buffer) {
@@ -300,29 +310,29 @@ export class SectionManager {
       const run = ++this.analysisRun;
       // The beat features only depend on the music and the beat grid: reuse them for another detail level.
       const cached = this.features && this.featuresBuffer === buffer && this.featuresTiming === timing ? this.features : undefined;
-      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets, ed.settings.sectionDetail, cached);
+      // Found groups fit around the ones marked by hand: nested in them or beside them, never half on top.
+      const fixed = this.groups.filter((g) => !g.auto).map((g) => ({ length: g.length / ROWS_PER_BEAT, starts: g.starts.map((s) => s / ROWS_PER_BEAT), score: 1 }));
+      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets, { detail: ed.settings.sectionDetail, fixed, features: cached });
       // Another song was loaded, or a newer analysis started, meanwhile.
       if (ed.audio.buffer !== buffer || run !== this.analysisRun) return;
       this.features = features;
       this.featuresTiming = timing;
       this.featuresBuffer = buffer;
       this.status = 'ready';
-      // Automatic groups are refreshed (detection may have improved); hand-made ones are kept.
-      if (replaceAuto || this.groups.every((g) => g.auto)) {
-        this.groups = this.groups.filter((g) => !g.auto);
-        for (const r of groups) {
-          this.groups.push({
-            id: this.nextId++,
-            length: r.length * ROWS_PER_BEAT,
-            starts: r.starts.map((s) => s * ROWS_PER_BEAT),
-            auto: true,
-            score: r.score,
-          });
-        }
-        this.sortGroups();
-        if (replaceAuto || groups.length) ed.hud(`Found ${groups.length} group(s) of similar sections.`);
+      // Automatic groups are refreshed (detection may have improved, or the detail level changed).
+      this.groups = this.groups.filter((g) => !g.auto);
+      for (const r of groups) {
+        this.groups.push({
+          id: this.nextId++,
+          length: r.length * ROWS_PER_BEAT,
+          starts: r.starts.map((s) => s * ROWS_PER_BEAT),
+          auto: true,
+          score: r.score,
+        });
       }
-      this.changed(replaceAuto);
+      this.sortGroups();
+      if (byUser || groups.length) ed.hud(`Found ${groups.length} group(s) of similar sections.`);
+      this.changed(byUser);
     } catch (e) {
       this.status = 'error';
       ed.hud(`Section analysis failed: ${(e as Error).message}`, 'warning');
