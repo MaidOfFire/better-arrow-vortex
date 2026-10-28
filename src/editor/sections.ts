@@ -14,8 +14,10 @@ export interface SectionGroup {
   /** Start row of each occurrence, ascending. */
   starts: number[];
   auto: boolean;
-  /** Mean audio similarity (auto groups). */
+  /** How surely its occurrences line up (auto groups, see confirmGroups). */
   score?: number;
+  /** The first detection detail level that shows it (auto groups). */
+  level?: number;
 }
 
 export interface Pane {
@@ -77,8 +79,10 @@ export class SectionManager {
   /** Timing the features were computed with; analysis is redone when it changes. */
   private featuresTiming = '';
   private featuresBuffer: AudioBuffer | null = null;
-  /** Bumped by every analysis, so only the latest one (e.g. after moving the detail slider) applies. */
+  /** Bumped by every analysis, so only the latest one applies. */
   private analysisRun = 0;
+  /** Everything the last detection found, at every detail level; `groups` shows those up to the chosen level. */
+  private detected: SectionGroup[] = [];
 
   constructor(private readonly ed: Editor) {}
 
@@ -215,6 +219,7 @@ export class SectionManager {
   /** Called when a simfile is opened or closed. Groups come from the file, else from the browser. */
   reset(): void {
     this.groups = [];
+    this.detected = [];
     this.features = null;
     this.status = 'idle';
     this.clearSide();
@@ -312,26 +317,25 @@ export class SectionManager {
       const cached = this.features && this.featuresBuffer === buffer && this.featuresTiming === timing ? this.features : undefined;
       // Found groups fit around the ones marked by hand: nested in them or beside them, never half on top.
       const fixed = this.groups.filter((g) => !g.auto).map((g) => ({ length: g.length / ROWS_PER_BEAT, starts: g.starts.map((s) => s / ROWS_PER_BEAT), score: 1 }));
-      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets, { detail: ed.settings.sectionDetail, fixed, features: cached });
+      const { features, groups } = await analyzeStructure(buffer, this.beatTimes(), onsets, { fixed, features: cached });
       // Another song was loaded, or a newer analysis started, meanwhile.
       if (ed.audio.buffer !== buffer || run !== this.analysisRun) return;
       this.features = features;
       this.featuresTiming = timing;
       this.featuresBuffer = buffer;
       this.status = 'ready';
-      // Automatic groups are refreshed (detection may have improved, or the detail level changed).
-      this.groups = this.groups.filter((g) => !g.auto);
-      for (const r of groups) {
-        this.groups.push({
-          id: this.nextId++,
-          length: r.length * ROWS_PER_BEAT,
-          starts: r.starts.map((s) => s * ROWS_PER_BEAT),
-          auto: true,
-          score: r.score,
-        });
-      }
-      this.sortGroups();
-      if (byUser || groups.length) ed.hud(`Found ${groups.length} group(s) of similar sections.`);
+      // Automatic groups are refreshed (detection may have improved); the detail level picks which show.
+      this.detected = groups.map((r) => ({
+        id: this.nextId++,
+        length: r.length * ROWS_PER_BEAT,
+        starts: r.starts.map((s) => s * ROWS_PER_BEAT),
+        auto: true,
+        score: r.score,
+        level: r.level,
+      }));
+      this.showDetected();
+      const shown = this.groups.filter((g) => g.auto).length;
+      if (byUser || shown) ed.hud(`Found ${shown} group(s) of similar sections (detail ${ed.settings.sectionDetail}/${DETAIL_LEVELS.length}).`);
       this.changed(byUser);
     } catch (e) {
       this.status = 'error';
@@ -408,20 +412,34 @@ export class SectionManager {
 
   removeGroup(g: SectionGroup): void {
     this.groups = this.groups.filter((x) => x !== g);
+    this.detected = this.detected.filter((x) => x !== g); // stays gone at every detail level
     this.groupEdited(g);
     if (this.activeId === g.id) this.activeId = null;
     this.changed();
   }
 
-  /** Sets how much automatic detection finds (1–5) and detects again; hand-made groups stay. */
+  /**
+   * Sets how much of the detection to show (1–5). Every level holds what the coarser ones have,
+   * so this only moves a cut-off; hand-made groups stay.
+   */
   setDetail(level: number): void {
     const ed = this.ed;
     level = Math.min(DETAIL_LEVELS.length, Math.max(1, Math.round(level)));
     ed.settings.sectionDetail = level;
     ed.saveSettings();
     ed.hud(`Section detail ${level}/${DETAIL_LEVELS.length}: ${DETAIL_LEVELS[level - 1].label.toLowerCase()}`);
-    if (ed.audio.buffer) void this.analyze(true);
+    if (this.detected.length || this.status === 'ready') {
+      this.showDetected();
+      this.changed();
+    } else if (ed.audio.buffer) void this.analyze(true);
     else ed.changed();
+  }
+
+  /** Shows the found groups up to the chosen detail level next to the hand-made ones. */
+  private showDetected(): void {
+    const level = this.ed.settings.sectionDetail;
+    this.groups = [...this.groups.filter((g) => !g.auto), ...this.detected.filter((g) => g.auto && (g.level ?? 1) <= level)];
+    this.sortGroups();
   }
 
   setActive(g: SectionGroup | null): void {

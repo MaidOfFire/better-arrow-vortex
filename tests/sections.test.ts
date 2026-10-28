@@ -290,6 +290,16 @@ describe('nested sections', () => {
     expect(findHierarchy(f, 1).map((g) => `${g.length}@${g.starts.join(',')}`)).toEqual(['64@0,128']);
   });
 
+  it('builds the detail levels as one hierarchy: a finer level only adds groups', async () => {
+    const { findLevels } = await import('../src/analysis/structure');
+    const f = features(240, 0, 0, 0);
+    f.data.copyWithin(32 * f.dims, 0, 16 * f.dims);
+    f.data.copyWithin(128 * f.dims, 0, 64 * f.dims);
+    const levels = findLevels(f).map((g) => `${g.length}@${g.starts.join(',')} L${g.level}`);
+    // The section is the clearest (level 1); the phrase inside it comes with the parts (level 3).
+    expect(levels).toEqual(['64@0,128 L1', '16@0,32,128,160 L3']);
+  });
+
   // 20 measures, the last one with a note so the chart is long enough.
   const LONG = `#TITLE:Nested;#OFFSET:0;#BPMS:0=120;
 #NOTES:dance-single:me:Challenge:10::

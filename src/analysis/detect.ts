@@ -47,19 +47,20 @@ export function analyzeOnsets(buffer: AudioBuffer): Promise<OnsetData> {
 type StructureResult = { features: BeatFeatures; groups: RepeatGroup[] };
 
 /**
- * Beat-level features and automatically found repeats at a detail level (see DETAIL_LEVELS), for
- * the given beat times (seconds), fitted around the `fixed` groups (marked by hand, in beats).
- * With `features` from an earlier run on the same beat grid, only the search runs again.
+ * Beat-level features and automatically found repeats for every detail level (each group has the
+ * first level that shows it, see findLevels), for the given beat times (seconds), fitted around
+ * the `fixed` groups (marked by hand, in beats). With `features` from an earlier run on the same
+ * beat grid, only the search runs again.
  */
 export function analyzeStructure(
   buffer: AudioBuffer,
   beatTimes: Float64Array,
   onsets: OnsetData,
-  options: { detail: number; fixed: RepeatGroup[]; features?: BeatFeatures },
+  options: { fixed: RepeatGroup[]; features?: BeatFeatures },
 ): Promise<StructureResult> {
   const worker = new Worker(new URL('./structureWorker.ts', import.meta.url), { type: 'module' });
   const pick = (d: Record<string, unknown>) => d.result as StructureResult;
-  const { detail, fixed, features } = options;
-  if (features) return post(worker, { features, detail, fixed }, [], pick);
-  return runWorker(worker, buffer, pick, { beatTimes, onsets, detail, fixed });
+  const { fixed, features } = options;
+  if (features) return post(worker, { features, fixed }, [], pick);
+  return runWorker(worker, buffer, pick, { beatTimes, onsets, fixed });
 }

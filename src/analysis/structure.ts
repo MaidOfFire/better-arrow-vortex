@@ -22,6 +22,8 @@ export interface RepeatGroup {
   length: number;
   starts: number[];
   score: number;
+  /** The first detail level that has this group (see findLevels). */
+  level?: number;
 }
 
 const BLOCK = 12;
@@ -334,19 +336,39 @@ export const DEFAULT_DETAIL = 4;
  * that describes the same stretches as one already found (similar length, mostly the same beats)
  * is dropped. The nesting itself is derived later from which occurrences contain which.
  */
-export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine = true, fixed: RepeatGroup[] = []): RepeatGroup[] {
+export function findHierarchy(
+  f: BeatFeatures,
+  detail = DEFAULT_DETAIL,
+  options: {
+    refine?: boolean;
+    /** Groups marked by hand: found groups fit around them, and they are not changed. */
+    fixed?: RepeatGroup[];
+    /** Groups found at a coarser level: found groups fit around them, and they can only gain occurrences. */
+    kept?: RepeatGroup[];
+    /** How many new groups to keep at most (default: the level's). */
+    maxGroups?: number;
+  } = {},
+): RepeatGroup[] {
+  const { refine = true, fixed = [], kept = [] } = options;
   const level = DETAIL_LEVELS[Math.min(DETAIL_LEVELS.length, Math.max(1, Math.round(detail))) - 1];
-  const { maxGroups, perScale, strong, minConfidence } = level;
+  const { perScale, strong, minConfidence } = level;
+  const maxGroups = options.maxGroups ?? level.maxGroups;
   // Pool more than will be kept: confirming drops some, and the cap applies to what is left.
   const poolSize = Math.max(24, maxGroups);
   const index = new SimilarityIndex(f);
-  const scales = [
-    () => findRepeats(f, 16, 4, 32, perScale, Infinity, index, strong),
-    () => findRepeats(f, 8, 4, 16, perScale, 32, index, strong),
-    () => findRepeats(f, 4, 2, 8, perScale, 16, index, strong),
-  ]
-    .slice(0, level.scales)
-    .map((run) => run());
+  // Window, step, shortest and longest repeat (beats) of each scale.
+  const scaleSpecs = [
+    [16, 4, 32, Infinity],
+    [8, 4, 16, 32],
+    [4, 2, 8, 16],
+  ].slice(0, level.scales);
+  /** The shortest repeat each group's scale looks for. */
+  const shortest = new Map<RepeatGroup, number>();
+  const scales = scaleSpecs.map(([window, step, min, max]) => {
+    const found = findRepeats(f, window, step, min, perScale, max, index, strong);
+    for (const g of found) shortest.set(g, min);
+    return found;
+  });
   const coverage = (g: RepeatGroup) => {
     const marks = new Uint8Array(f.beats);
     for (const s of g.starts) marks.fill(1, s, Math.min(f.beats, s + g.length));
@@ -383,9 +405,11 @@ export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine =
     dropOverlaps(f, g, refine ? Math.max(2, Math.floor(g.length / 8)) : 0);
     if (refine) refineGroup(f, g);
   }
-  // Refining can move two groups onto the same stretches: keep the one pooled first.
+  // Refining can move two groups onto the same stretches: keep the one pooled first. And a run
+  // that only matched weakly can shrink to a fragment of what its scale looks for: not a section.
   for (let i = pooled.length - 1; i >= 0; --i) {
-    if (pooled[i].starts.length < 2 || pooled.slice(0, i).some((p) => sameRepeat(p, pooled[i]))) pooled.splice(i, 1);
+    const g = pooled[i];
+    if (g.starts.length < 2 || g.length < 0.6 * (shortest.get(g) ?? 0) || pooled.slice(0, i).some((p) => sameRepeat(p, g))) pooled.splice(i, 1);
   }
   // Equal-length groups whose occurrences sound alike are one group (e.g. a chorus phrase that
   // comes back in the final chorus).
@@ -405,8 +429,24 @@ export function findHierarchy(f: BeatFeatures, detail = DEFAULT_DETAIL, refine =
       pooled.splice(j--, 1);
     }
   }
-  resolveEdgeOverlaps(f, pooled);
-  return confirmGroups(index, pooled, minConfidence, maxGroups, fixed).sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+  resolveEdgeOverlaps(f, pooled, [...fixed, ...kept]);
+  return confirmGroups(index, pooled, minConfidence, maxGroups, fixed, kept).sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+}
+
+/**
+ * Detection at every detail level at once, as one hierarchy: each level searches more widely
+ * and fits around what the coarser levels found, which it may add occurrences to but never
+ * changes otherwise. So going one level up only adds groups, and each group's `level` is the
+ * first level that has it: showing a level is a cut-off, not a new detection.
+ */
+export function findLevels(f: BeatFeatures, fixed: RepeatGroup[] = []): RepeatGroup[] {
+  const found: RepeatGroup[] = [];
+  DETAIL_LEVELS.forEach((level, i) => {
+    const maxGroups = level.maxGroups - found.length;
+    if (maxGroups <= 0) return;
+    for (const g of findHierarchy(f, i + 1, { fixed, kept: found, maxGroups })) found.push(Object.assign(g, { level: i + 1 }));
+  });
+  return found.sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
 }
 
 /**
@@ -459,10 +499,18 @@ const MIN_OCCURRENCE = 0.08;
  * occurrence inside one at least 1.5 times as long) or touch: an occurrence partly overlapping
  * a stronger group's is dropped, and a group that is nearly the same as a stronger one (one of
  * its occurrences on top of one of the other's, similar length) is merged into it. At most
- * `maxGroups` are kept. `fixed` groups (marked by hand) count as stronger than all and are left
- * as they are: a group that is nearly the same as one of them is dropped instead of merged.
+ * `maxGroups` new ones are kept. `fixed` groups (marked by hand) and `kept` ones (found at a
+ * coarser level) count as stronger than all and only `kept` ones can gain occurrences: a group
+ * that is nearly the same as a fixed one is dropped instead of merged. Returns the new groups.
  */
-export function confirmGroups(index: SimilarityIndex, groups: RepeatGroup[], minConfidence: number, maxGroups: number, fixed: RepeatGroup[] = []): RepeatGroup[] {
+export function confirmGroups(
+  index: SimilarityIndex,
+  groups: RepeatGroup[],
+  minConfidence: number,
+  maxGroups: number,
+  fixed: RepeatGroup[] = [],
+  kept: RepeatGroup[] = [],
+): RepeatGroup[] {
   const pair = (len: number, a: number, b: number) => (alignedContrast(index, a, b, len) + alignedContrast(index, b, a, len)) / 2;
   const fit = (g: RepeatGroup, s: number) => g.starts.reduce((sum, t) => (t === s ? sum : sum + pair(g.length, s, t)), 0) / (g.starts.length - 1);
   const prune = (g: RepeatGroup) => {
@@ -493,9 +541,10 @@ export function confirmGroups(index: SimilarityIndex, groups: RepeatGroup[], min
     }
     return { kind: 'fine' };
   };
-  const accepted: RepeatGroup[] = [...fixed];
+  const given = fixed.length + kept.length;
+  const accepted: RepeatGroup[] = [...fixed, ...kept];
   for (const g of candidates) {
-    if (accepted.length - fixed.length >= maxGroups) break;
+    if (accepted.length - given >= maxGroups) break;
     let twin: { p: RepeatGroup; d: number } | null = null;
     const kept: number[] = [];
     for (const x of g.starts) {
@@ -523,7 +572,7 @@ export function confirmGroups(index: SimilarityIndex, groups: RepeatGroup[], min
     prune(g);
     if (g.score >= minConfidence) accepted.push(g);
   }
-  return accepted.slice(fixed.length);
+  return accepted.slice(given);
 }
 
 /**
@@ -531,8 +580,9 @@ export function confirmGroups(index: SimilarityIndex, groups: RepeatGroup[], min
  * the start of the next when those beats sound like both. Split such shared beats where it fits
  * best: each side keeps the beats on which its own occurrences agree more. One occurrence inside
  * another is nesting and is left alone, and so are overlaps of more than a quarter of either.
+ * `frozen` groups (marked by hand, or found at a coarser level) keep all the beats they share.
  */
-export function resolveEdgeOverlaps(f: BeatFeatures, groups: RepeatGroup[]): void {
+export function resolveEdgeOverlaps(f: BeatFeatures, groups: RepeatGroup[], frozen: RepeatGroup[] = []): void {
   /** How alike a group's occurrences are `rel` beats after their starts. */
   const agree = (g: RepeatGroup, rel: number) => {
     let sum = 0;
@@ -548,11 +598,12 @@ export function resolveEdgeOverlaps(f: BeatFeatures, groups: RepeatGroup[]): voi
     }
     return n ? sum / n : 0;
   };
+  const all = [...frozen, ...groups];
   for (let changed = true; changed; ) {
     changed = false;
-    for (const a of groups) {
-      for (const b of groups) {
-        if (a === b) continue;
+    for (const a of all) {
+      for (const b of all) {
+        if (a === b || (frozen.includes(a) && frozen.includes(b))) continue;
         // The most beats by which an occurrence of b starts inside an occurrence of a and runs on past its end.
         let k = 0;
         for (const sa of a.starts) {
@@ -560,16 +611,18 @@ export function resolveEdgeOverlaps(f: BeatFeatures, groups: RepeatGroup[]): voi
         }
         if (!k || k > 0.25 * Math.min(a.length, b.length)) continue;
         // a keeps the first `keep` shared beats, b the rest.
-        const aAgree = Array.from({ length: k }, (_, i) => agree(a, a.length - k + i));
-        const bAgree = Array.from({ length: k }, (_, i) => agree(b, i));
-        let keep = 0;
-        let best = -Infinity;
-        for (let m = 0; m <= k; ++m) {
-          let score = 0;
-          for (let i = 0; i < k; ++i) score += i < m ? aAgree[i] : bAgree[i];
-          if (score > best) {
-            best = score;
-            keep = m;
+        let keep = frozen.includes(a) ? k : 0;
+        if (!frozen.includes(a) && !frozen.includes(b)) {
+          const aAgree = Array.from({ length: k }, (_, i) => agree(a, a.length - k + i));
+          const bAgree = Array.from({ length: k }, (_, i) => agree(b, i));
+          let best = -Infinity;
+          for (let m = 0; m <= k; ++m) {
+            let score = 0;
+            for (let i = 0; i < k; ++i) score += i < m ? aAgree[i] : bAgree[i];
+            if (score > best) {
+              best = score;
+              keep = m;
+            }
           }
         }
         a.length -= k - keep;

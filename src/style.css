@@ -640,20 +640,62 @@ table {
   flex-direction: column;
 }
 
+/* Drawn here rather than by the browser so the thumb is exactly as wide as a tick (14px): its
+   centre then stops exactly above each tick when the ticks are spread edge to edge. */
 .detail-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   width: 100%;
+  height: 16px;
   margin: 2px 0 0;
-  accent-color: var(--accent);
+  background: transparent;
+  cursor: pointer;
 }
 
-/* Centred under the thumb's stops: the thumb is about 16px wide, a tick 14px. */
+.detail-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.detail-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.detail-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.detail-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.detail-slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .detail-ticks {
   display: flex;
   justify-content: space-between;
-  padding: 0 1px;
 }
 
 .detail-tick {
+  flex: none;
   width: 14px;
   padding: 3px 0 0;
   border: none;

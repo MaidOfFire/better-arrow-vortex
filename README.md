@@ -59,11 +59,13 @@ folder); click one to open it again (the browser asks once for access).
   with the rest of their group are dropped, each group's confidence is shown in the dialog
   (faint, clear, very clear), and groups never half overlap: two groups either nest or sit side
   by side (the surer one wins; a near copy of a group is merged into it). Groups marked by hand
-  are kept as they are and found groups fit around them. A detail slider beside "Detect
-  automatically" (also Sections > Detection detail) has five steps: 1 keeps only the clearest big
-  sections, 2 all big sections, 3 adds the parts inside them, 4 (default) adds short figures, 5
-  also fainter and shorter repeats; moving it redetects in a moment (the per-beat analysis is
-  reused). Found groups are refreshed whenever a song loads. Occurrences are matched at any beat offset, also when a
+  are kept as they are and found groups fit around them. Detection builds five detail levels as
+  one hierarchy, coarsest first: each level searches more widely and fits around what the
+  coarser ones found (adding occurrences to them at most), so a finer level only adds groups. The
+  slider beside "Detect automatically" (also Sections > Detection detail) is a cut-off on that
+  hierarchy and moves instantly: 1 shows only the clearest big sections, 2 all big sections, 3
+  adds the parts inside them, 4 (default) short figures, 5 also fainter and shorter repeats.
+  Found groups are refreshed whenever a song loads. Occurrences are matched at any beat offset, also when a
   repeat is not a whole number of measures later, and each group's start and end are then moved
   beat by beat to where its occurrences stop sounding alike; where two neighbouring sections
   both claim a few beats, each keeps the beats its own occurrences agree on more. The nesting
