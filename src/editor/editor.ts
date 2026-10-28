@@ -1020,6 +1020,22 @@ export class Editor {
     }, 'Change BPM');
   }
 
+  /**
+   * Moves the whole grid (every BPM marker together, by changing the offset) so that a beat lands
+   * at `time`, keeping every BPM: syncing a chart whose tempo is already marked. The move is less
+   * than a beat, so no note changes its beat. `bpm` is the tempo `time` was found at; half or
+   * double the grid's tempo there is fine. Returns the move in seconds (later is positive).
+   */
+  alignGridTo(time: number, bpm: number): number {
+    const beat = Math.round(this.tempo.timeToBeat(time));
+    // Nearest point of whichever grid is finer: a double-tempo estimate can sit on a half beat.
+    const period = Math.min(60 / bpm, 60 / this.tempo.bpmAt(beat));
+    let shift = time - this.tempo.beatToTime(beat);
+    shift -= Math.round(shift / period) * period;
+    this.setOffset(this.timing.offset - shift);
+    return shift;
+  }
+
   /** Moves the music so that beat 0 shifts by `beats` (keeps the first BPM). */
   shiftOffsetByBeats(beats: number): void {
     this.setOffset(this.timing.offset + (beats * 60) / this.tempo.firstBpm);

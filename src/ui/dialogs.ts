@@ -384,6 +384,11 @@ class AdjustSyncDialog extends Dialog {
       row(
         button('Find BPM', () => void this.detect(), 'Estimate the music BPM by analyzing the audio'),
         button('Apply BPM', () => this.apply(), 'Apply the selected BPM estimate and align beat 0 with it'),
+        button(
+          'Apply offset only',
+          () => this.applyOffsetOnly(),
+          'Line the grid up with the detected beats and keep every BPM marker: all markers move together, by less than a beat',
+        ),
       ),
     );
   }
@@ -420,6 +425,21 @@ class AdjustSyncDialog extends Dialog {
     }
     this.busy = false;
     this.rebuild();
+  }
+
+  /** For charts whose tempo is already marked: only the offset changes, every BPM marker stays. */
+  private applyOffsetOnly(): void {
+    const e = this.estimates[this.chosen];
+    if (!e) return this.ed.hud('Run "Find BPM" first.');
+    const ed = this.ed;
+    // Only meaningful when the estimate has the grid's tempo (or half or double it) where it was found.
+    const grid = ed.tempo.bpmAt(Math.max(0, ed.tempo.timeToBeat(e.beatTime)));
+    if (![0.5, 1, 2].some((k) => Math.abs(e.bpm * k - grid) <= grid * 0.01)) {
+      return ed.hud(`${fmtNum(e.bpm, 3)} BPM does not match the chart's ${fmtNum(grid, 3)} BPM there: pick a matching estimate, or use Apply BPM.`, 'warning');
+    }
+    const before = ed.timing.offset;
+    const shift = ed.alignGridTo(e.beatTime, e.bpm);
+    ed.hud(`Moved the grid ${shift >= 0 ? 'later' : 'earlier'} by ${Math.abs(shift * 1000).toFixed(1)} ms (offset ${before.toFixed(3)} → ${ed.timing.offset.toFixed(3)}); BPM markers unchanged.`);
   }
 
   private apply(): void {

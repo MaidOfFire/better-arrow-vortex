@@ -51,7 +51,10 @@ folder); click one to open it again (the browser asks once for access).
   initial BPM, move first beat, automatic BPM + offset detection, which lands within a few
   milliseconds of hand-synced Etterna charts; as the method, "Onsets" is fast, "Beat This!" runs a
   neural beat tracker on the first two minutes, about 12 s, after a one-time 10 MB model
-  download, and also puts beat 0 on a downbeat so measures start where the bars do), Adjust Tempo (halve/double,
+  download, and also puts beat 0 on a downbeat so measures start where the bars do; "Apply BPM"
+  sets the first BPM and the offset, "Apply offset only" keeps every BPM marker and moves the whole
+  grid by less than a beat onto the detected beats, for charts whose tempo is already marked),
+  Adjust Tempo (halve/double,
   insert/delete beats, region to stop), tempo breakdown.
 - Similar sections (Sections menu, Shift+M): repeated parts of the song are detected from the
   audio on the chart's beat grid when the music loads (harmony + timbre + onset rhythm per beat),

@@ -133,3 +133,52 @@ describe('Editor', () => {
     expect(ed.sim!.charts.length).toBe(2);
   });
 });
+
+describe('syncing a chart whose tempo is already marked', () => {
+  const MAPPED = `#TITLE:T;#OFFSET:0;#BPMS:0=120,8=150;
+#NOTES:dance-single:me:Challenge:10::
+1000
+0000
+0000
+0000
+,
+0000
+0000
+0000
+0000
+,
+0000
+0000
+0000
+0001
+;`;
+  let ed: Editor;
+  beforeEach(() => {
+    ed = new Editor();
+    ed.setSimfile(loadSm(MAPPED), 'mapped.sm', new FileSource());
+  });
+  const bpms = () => ed.timing.bpms.map((b) => `${b.beat}=${b.bpm}`);
+  const notesNow = () => ed.notes.map((n) => n.row);
+
+  it('moves every BPM marker together by the small difference, keeping all tempos and notes', () => {
+    const beat10 = ed.tempo.beatToTime(10);
+    const notesBefore = notesNow();
+    // A beat detected 3 ms after grid beat 1 (0.5 s at 120 BPM).
+    expect(ed.alignGridTo(0.503, 120)).toBeCloseTo(0.003, 6);
+    expect(ed.timing.offset).toBeCloseTo(-0.003, 6);
+    expect(bpms()).toEqual(['0=120', '8=150']);
+    expect(notesNow()).toEqual(notesBefore);
+    // A beat in the 150 BPM part moved by the same 3 ms: the whole grid shifted.
+    expect(ed.tempo.beatToTime(10) - beat10).toBeCloseTo(0.003, 6);
+    ed.undo();
+    expect(ed.timing.offset).toBe(0);
+  });
+
+  it('never moves by a whole or half beat when the estimate is at double or half the tempo', () => {
+    // Double tempo: its beat can sit on a half beat of the grid (0.25 s).
+    expect(ed.alignGridTo(0.253, 240)).toBeCloseTo(0.003, 6);
+    ed.undo();
+    // Half tempo: every other grid beat (1.0 s is grid beat 2).
+    expect(ed.alignGridTo(1.003, 60)).toBeCloseTo(0.003, 6);
+  });
+});
