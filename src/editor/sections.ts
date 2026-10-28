@@ -37,6 +37,11 @@ interface SectionTree {
   names: Map<number, string>;
   /** Parents before their parts, siblings by position in the song. */
   order: SectionGroup[];
+  /**
+   * Bracket column beside the notefield: one per level, more where groups of one level overlap
+   * (sections that partly cover each other without one containing the other).
+   */
+  column: Map<number, number>;
 }
 
 export const SECTION_COLORS = ['#f2b134', '#4fc3f7', '#ef6f9b', '#9ccc65', '#b39ddb', '#ff8a65', '#4db6ac', '#e0e0e0'];
@@ -104,6 +109,11 @@ export class SectionManager {
     return t.order.map((group) => ({ group, depth: t.depth.get(group.id) ?? 0 }));
   }
 
+  /** Column of the group's brackets beside the notefield (0 = outermost). */
+  columnOf(g: SectionGroup): number {
+    return this.tree().column.get(g.id) ?? 0;
+  }
+
   get maxDepth(): number {
     let d = 0;
     for (const v of this.tree().depth.values()) d = Math.max(d, v);
@@ -158,7 +168,22 @@ export class SectionManager {
       });
     };
     (children.get(null) ?? []).forEach((g, i) => visit(g, 0, i < 26 ? String.fromCharCode(65 + i) : `Z${i - 25}`));
-    const value: SectionTree = { parent, depth, names, order };
+    // Columns: groups of one level share a column unless their occurrences overlap; longer ones first.
+    const column = new Map<number, number>();
+    const overlaps = (a: SectionGroup, b: SectionGroup) =>
+      a.starts.some((s) => b.starts.some((t) => s < t + b.length && t < s + a.length));
+    let first = 0;
+    for (let d = 0; order.some((g) => depth.get(g.id) === d); ++d) {
+      const tracks: SectionGroup[][] = [];
+      for (const g of order.filter((x) => depth.get(x.id) === d).sort((a, b) => b.length - a.length)) {
+        let t = tracks.findIndex((track) => !track.some((o) => overlaps(o, g)));
+        if (t < 0) t = tracks.push([]) - 1;
+        tracks[t].push(g);
+        column.set(g.id, first + t);
+      }
+      first += tracks.length;
+    }
+    const value: SectionTree = { parent, depth, names, order, column };
     this.treeCache = { version: this.version, groups, value };
     return value;
   }

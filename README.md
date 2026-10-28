@@ -55,9 +55,12 @@ folder); click one to open it again (the browser asks once for access).
   at three scales so that repeats nest: whole sections, the parts that repeat inside them (e.g. a
   chorus phrase) and smaller figures. Occurrences are matched at any beat offset, also when a
   repeat is not a whole number of measures later, and each group's start and end are then moved
-  beat by beat to where its occurrences stop sounding alike. The nesting follows from which occurrences contain which,
-  also for groups marked by hand, and names follow it (D → Da → Da1). The minimap has one lane per
-  level, the status bar shows the path (E#1 › Ea#1: occurrence 1 of E, occurrence 1 of Ea), and in side views `{` / `}` switch between
+  beat by beat to where its occurrences stop sounding alike; where two neighbouring sections
+  both claim a few beats, each keeps the beats its own occurrences agree on more. The nesting
+  follows from which occurrences contain which, also for groups marked by hand, and names follow
+  it (D → Da → Da1). The minimap has one lane per level (sections of one level that partly
+  overlap are drawn side by side; levels past the third are a narrower stripe inside their
+  parent's block), brackets beside the notes get a column per level, the status bar shows the path (E#1 › Ea#1: occurrence 1 of E, occurrence 1 of Ea), and in side views `{` / `}` switch between
   following whole sections and the parts inside them;
   and can be marked by hand (group from a Tab region, add the cursor position with Shift+A, or
   "find similar to selection"). Groups show as brackets beside the notes and on the minimap and

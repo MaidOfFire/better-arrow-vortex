@@ -392,7 +392,63 @@ export function findHierarchy(f: BeatFeatures, maxGroups = 24, refine = true): R
       pooled.splice(j--, 1);
     }
   }
+  resolveEdgeOverlaps(f, pooled);
   return pooled.sort((p, q) => p.starts[0] - q.starts[0] || q.length - p.length);
+}
+
+/**
+ * Each group's edges are tuned on their own, so the end of one section can run a few beats into
+ * the start of the next when those beats sound like both. Split such shared beats where it fits
+ * best: each side keeps the beats on which its own occurrences agree more. One occurrence inside
+ * another is nesting and is left alone, and so are overlaps of more than a quarter of either.
+ */
+export function resolveEdgeOverlaps(f: BeatFeatures, groups: RepeatGroup[]): void {
+  /** How alike a group's occurrences are `rel` beats after their starts. */
+  const agree = (g: RepeatGroup, rel: number) => {
+    let sum = 0;
+    let n = 0;
+    for (let p = 0; p < g.starts.length; ++p) {
+      for (let q = p + 1; q < g.starts.length; ++q) {
+        const a = g.starts[p] + rel;
+        const b = g.starts[q] + rel;
+        if (a < 0 || b < 0 || a >= f.beats || b >= f.beats) continue;
+        sum += beatSimilarity(f, a, b);
+        ++n;
+      }
+    }
+    return n ? sum / n : 0;
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const a of groups) {
+      for (const b of groups) {
+        if (a === b) continue;
+        // The most beats by which an occurrence of b starts inside an occurrence of a and runs on past its end.
+        let k = 0;
+        for (const sa of a.starts) {
+          for (const sb of b.starts) if (sb > sa && sb < sa + a.length && sb + b.length > sa + a.length) k = Math.max(k, sa + a.length - sb);
+        }
+        if (!k || k > 0.25 * Math.min(a.length, b.length)) continue;
+        // a keeps the first `keep` shared beats, b the rest.
+        const aAgree = Array.from({ length: k }, (_, i) => agree(a, a.length - k + i));
+        const bAgree = Array.from({ length: k }, (_, i) => agree(b, i));
+        let keep = 0;
+        let best = -Infinity;
+        for (let m = 0; m <= k; ++m) {
+          let score = 0;
+          for (let i = 0; i < k; ++i) score += i < m ? aAgree[i] : bAgree[i];
+          if (score > best) {
+            best = score;
+            keep = m;
+          }
+        }
+        a.length -= k - keep;
+        b.starts = b.starts.map((s) => s + keep);
+        b.length -= keep;
+        changed = true;
+      }
+    }
+  }
 }
 
 /**

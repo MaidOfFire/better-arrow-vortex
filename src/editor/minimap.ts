@@ -24,9 +24,16 @@ interface Rect {
   h: number;
 }
 
+/** Where an occurrence was drawn in the lanes. */
+interface Block extends Rect {
+  group: SectionGroup;
+  index: number;
+}
+
 export class Minimap {
   private image: HTMLCanvasElement | null = null;
   private cacheKey: unknown[] = [];
+  private blocks: Block[] = [];
 
   constructor(
     private readonly editor: Editor,
@@ -76,27 +83,25 @@ export class Minimap {
     return x >= r.x && x < r.x + r.w && y >= r.y - (this.lanesWidth() ? LABEL_H : 0) && y < r.y + r.h;
   }
 
-  /** The section occurrence under a point in the lanes, if any. */
+  /** The section occurrence under a point in the lanes, if any (as last drawn). */
   laneAt(x: number, y: number): { group: SectionGroup; index: number } | null {
-    const lanes = this.lanes();
-    if (!lanes.length || !this.contains(x, y)) return null;
-    const lane = lanes[Math.floor((x - this.rect().x - 2) / LANE_W)];
-    if (!lane) return null;
-    const m = this.mapRect();
-    const v = this.editor.view;
-    // The closest occurrence in this lane, preferring the shortest group when several overlap.
-    let best: { group: SectionGroup; index: number } | null = null;
-    let bestKey = [4, Infinity];
-    for (const g of lane) {
-      g.starts.forEach((start, k) => {
-        const y0 = this.offsetToY(m, v.rowToOffset(start));
-        const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
-        const d = y < Math.min(y0, y1) ? Math.min(y0, y1) - y : y > Math.max(y0, y1) ? y - Math.max(y0, y1) : 0;
-        if (d < bestKey[0] || (d === bestKey[0] && g.length < bestKey[1])) {
-          bestKey = [d, g.length];
-          best = { group: g, index: k };
-        }
-      });
+    if (!this.lanes().length || !this.contains(x, y)) return null;
+    // The block under the point (deeper parts are drawn last, on top), else the nearest one in
+    // that lane within a few pixels, so short blocks are easy to hit.
+    for (let i = this.blocks.length - 1; i >= 0; --i) {
+      const b = this.blocks[i];
+      if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return b;
+    }
+    const lane = Math.floor((x - this.rect().x - 2) / LANE_W);
+    let best: Block | null = null;
+    let bestD = 4;
+    for (const b of this.blocks) {
+      if (Math.floor((b.x - this.rect().x - 2) / LANE_W) !== lane) continue;
+      const d = y < b.y ? b.y - y : y > b.y + b.h ? y - b.y - b.h : 0;
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
     }
     return best;
   }
@@ -163,48 +168,98 @@ export class Minimap {
   }
 
   /**
+   * Where each occurrence goes in the lanes. Occurrences of one level that overlap (sections that
+   * partly cover each other) are put side by side, only where they overlap. Levels deeper than
+   * there are lanes become a narrower stripe inside the block of the part they belong to.
+   */
+  private layoutLanes(m: Rect): Block[] {
+    const sec = this.editor.sections;
+    const v = this.editor.view;
+    const blocks: Block[] = [];
+    const span = (s: number, e: number) => {
+      const y0 = this.offsetToY(m, v.rowToOffset(s));
+      const y1 = this.offsetToY(m, v.rowToOffset(e));
+      return { y: Math.min(y0, y1), h: Math.max(2, Math.abs(y1 - y0)) };
+    };
+    this.lanes().forEach((lane, i) => {
+      const x = this.laneX(i);
+      const w = LANE_W - 2;
+      const items = lane
+        .filter((g) => sec.depthOf(g) === i)
+        .flatMap((group) => group.starts.map((start, index) => ({ group, index, start, end: start + group.length })))
+        .sort((a, b) => a.start - b.start || b.end - a.end);
+      // Runs of overlapping occurrences share the lane width, each in the first free column.
+      for (let k = 0; k < items.length; ) {
+        let end = items[k].end;
+        let j = k + 1;
+        while (j < items.length && items[j].start < end) end = Math.max(end, items[j++].end);
+        const ends: number[] = [];
+        const cols = items.slice(k, j).map((it) => {
+          let c = ends.findIndex((e) => e <= it.start);
+          if (c < 0) c = ends.push(0) - 1;
+          ends[c] = it.end;
+          return c;
+        });
+        const cw = w / ends.length;
+        items.slice(k, j).forEach((it, n) => blocks.push({ group: it.group, index: it.index, x: x + cols[n] * cw, w: ends.length > 1 ? cw - 1 : w, ...span(it.start, it.end) }));
+        k = j;
+      }
+      // Deeper levels (shallowest first, so their parents are placed): inside the parent's block.
+      const deeper = lane.filter((g) => sec.depthOf(g) > i).sort((a, b) => sec.depthOf(a) - sec.depthOf(b));
+      for (const group of deeper) {
+        const parent = sec.parentOf(group);
+        group.starts.forEach((start, index) => {
+          const end = start + group.length;
+          const host = blocks.find((b) => b.group === parent && Math.min(end, parent.starts[b.index] + parent.length) - Math.max(start, parent.starts[b.index]) >= 0.5 * group.length);
+          const bx = host ? host.x : x;
+          const bw = host ? host.w : w;
+          blocks.push({ group, index, x: bx + Math.min(2, bw / 4), w: Math.max(2, bw - 2 * Math.min(2, bw / 4)), ...span(start, end) });
+        });
+      }
+    });
+    return blocks;
+  }
+
+  /**
    * One lane per nesting level (1 = whole sections, 2 = parts inside them, …); each block is an
    * occurrence in its group's colour, the active group's blocks outlined in white.
    */
   private drawLanes(ctx: CanvasRenderingContext2D, m: Rect): void {
     const lanes = this.lanes();
+    this.blocks = [];
     if (!lanes.length) return;
-    const ed = this.editor;
-    const v = ed.view;
-    const sec = ed.sections;
+    const sec = this.editor.sections;
     const r = this.rect();
     ctx.fillStyle = '#0d0d0d';
     ctx.fillRect(r.x, r.y, lanes.length * LANE_W + 4, r.h);
     ctx.font = 'bold 10px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    lanes.forEach((lane, i) => {
+    lanes.forEach((_, i) => {
       const x = this.laneX(i);
-      const w = LANE_W - 2;
       ctx.fillStyle = '#181818';
-      ctx.fillRect(x, m.y, w, m.h);
-      // Longer groups first so shorter, overlapping ones stay visible on top.
-      for (const g of [...lane].sort((a, b) => b.length - a.length)) {
-        const active = g.id === sec.activeId;
-        for (const start of g.starts) {
-          const y0 = this.offsetToY(m, v.rowToOffset(start));
-          const y1 = this.offsetToY(m, v.rowToOffset(start + g.length));
-          const top = Math.min(y0, y1);
-          const h = Math.max(2, Math.abs(y1 - y0));
-          ctx.globalAlpha = active ? 1 : 0.8;
-          ctx.fillStyle = sec.colorOf(g);
-          ctx.fillRect(x, top, w, h);
-          ctx.globalAlpha = 1;
-          if (active) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x - 0.5, top - 0.5, w + 1, h + 1);
-          }
-        }
-      }
+      ctx.fillRect(x, m.y, LANE_W - 2, m.h);
       ctx.fillStyle = '#aaa';
-      ctx.fillText(String(i + 1), x + w / 2, r.y - LABEL_H / 2);
+      ctx.fillText(String(i + 1), x + (LANE_W - 2) / 2, r.y - LABEL_H / 2);
     });
+    this.blocks = this.layoutLanes(m);
+    for (const b of this.blocks) {
+      const active = b.group.id === sec.activeId;
+      // Deeper parts drawn on their parent's block get a dark edge so they stand apart from it.
+      if (sec.depthOf(b.group) >= MAX_LANES) {
+        ctx.fillStyle = '#0d0d0d';
+        ctx.fillRect(b.x - 1, b.y, b.w + 2, b.h);
+      }
+      ctx.globalAlpha = active ? 1 : 0.85;
+      ctx.fillStyle = sec.colorOf(b.group);
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.globalAlpha = 1;
+      if (active) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+      }
+    }
   }
 
   private getImage(w: number, h: number): HTMLCanvasElement | null {

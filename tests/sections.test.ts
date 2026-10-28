@@ -73,6 +73,19 @@ describe('section detection', () => {
     expect(g.length).toBe(32);
   });
 
+  it('splits beats two neighbouring sections both claim where each sounds alike', async () => {
+    const { resolveEdgeOverlaps } = await import('../src/analysis/structure');
+    // A plays [10, 38) and again at 110; B plays [38, 62) and again at 160.
+    const f2 = features(240, 10, 28, 110);
+    f2.data.copyWithin(160 * f2.dims, 38 * f2.dims, 62 * f2.dims);
+    // Detected two beats too long and two beats too early: both claim beats 36-39.
+    const a = { length: 30, starts: [10, 110], score: 1 };
+    const b = { length: 26, starts: [36, 158], score: 1 };
+    resolveEdgeOverlaps(f2, [a, b]);
+    expect([a.length, a.starts]).toEqual([28, [10, 110]]);
+    expect([b.length, b.starts]).toEqual([24, [38, 160]]);
+  });
+
   it('ranks the repeat first for find-similar', () => {
     expect(rankMatches(f, 20, 16)[0].start).toBe(120);
   });
@@ -122,6 +135,22 @@ describe('SectionManager', () => {
     expect(notes(ed)).toEqual(['0:0', '48:1', '96:2', '144:3', '192:3', '240:2', '288:1', '336:0']);
     ed.undo();
     expect(notes(ed)).toEqual(['0:0', '48:1', '96:2', '144:3']);
+  });
+
+  it('gives same-level groups that partly overlap their own bracket columns', () => {
+    const add = (begin: number, end: number, more: number) => {
+      ed.setRegion(begin, end);
+      const g = ed.sections.newGroupFromRegion()!;
+      ed.sections.addOccurrence(g, more);
+      return g;
+    };
+    const a = add(0, 192, 768); // m0 and m4
+    const b = add(96, 288, 1152); // m0.5 and m6: overlaps a's first occurrence, not inside it
+    const c = add(384, 480, 1344); // m2 and m7: overlaps neither
+    const sec = ed.sections;
+    expect([sec.depthOf(a), sec.depthOf(b), sec.depthOf(c)]).toEqual([0, 0, 0]);
+    expect(sec.columnOf(a)).not.toBe(sec.columnOf(b));
+    expect(sec.columnOf(c)).toBe(0);
   });
 
   it('remembers groups per song', () => {
