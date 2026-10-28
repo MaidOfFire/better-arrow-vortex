@@ -28,7 +28,7 @@ export class Statusbar {
       if (st.section) {
         const sec = ed.sections;
         const path = sec.pathAt(v.cursorRow);
-        if (path.length) parts.push(['Section', path.map((g) => `${sec.nameOf(g)}${sec.occurrenceAt(g, v.cursorRow) + 1}`).join(' › ')]);
+        if (path.length) parts.push(['Section', path.map((g) => sec.occurrenceLabel(g, sec.occurrenceAt(g, v.cursorRow))).join(' › ')]);
       }
       if (st.hover && v.hoverRow >= 0) {
         parts.push(['Mouse', `row ${v.hoverRow}, beat ${(v.hoverRow / ROWS_PER_BEAT).toFixed(3)}`]);

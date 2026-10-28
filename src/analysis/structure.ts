@@ -341,16 +341,33 @@ export function findHierarchy(f: BeatFeatures, maxGroups = 24, refine = true): R
     }
     return both >= 0.6 * Math.min(na, nb);
   };
+  // The same repeat found at another scale can have occurrences this one missed: add them, lined
+  // up through an occurrence both have (refining settles the last beat).
+  const absorb = (p: RepeatGroup, g: RepeatGroup) => {
+    const covers = (s: number, t: number) => overlap(s, s + g.length, t, t + p.length) >= 0.5 * Math.min(g.length, p.length);
+    let d: number | null = null;
+    for (const s of g.starts) for (const t of p.starts) if (d === null && covers(s, t)) d = t - s;
+    if (d === null) return;
+    for (const s of g.starts) {
+      const at = Math.min(f.beats - p.length, Math.max(0, s + d));
+      if (p.starts.every((t) => overlap(at, at + p.length, t, t + p.length) < 0.5 * p.length)) p.starts.push(at);
+    }
+    p.starts.sort((x, y) => x - y);
+  };
   const pooled: RepeatGroup[] = [];
   for (const scale of scales) {
     // Strongest first, so the cap below keeps the clearest repeats of each scale.
     for (const g of [...scale].sort((p, q) => q.score * q.length * q.starts.length - p.score * p.length * p.starts.length)) {
       if (pooled.length >= maxGroups) break;
-      if (!pooled.some((p) => sameRepeat(p, g))) pooled.push(g);
+      const same = pooled.find((p) => sameRepeat(p, g));
+      if (same) absorb(same, g);
+      else pooled.push(g);
     }
   }
   for (const g of pooled) {
-    dropOverlaps(f, g);
+    // Occurrences overlapping by a few beats are usually a beat or two off: refining moves them
+    // apart. Larger overlaps come from merging runs and are settled first.
+    dropOverlaps(f, g, refine ? Math.max(2, Math.floor(g.length / 8)) : 0);
     if (refine) refineGroup(f, g);
   }
   // Refining can move two groups onto the same stretches: keep the one pooled first.
@@ -381,44 +398,56 @@ export function findHierarchy(f: BeatFeatures, maxGroups = 24, refine = true): R
 /**
  * Runs merged into one group can leave two occurrences on top of each other (a repeat that also
  * matches itself a few measures later). Keep the one that sounds more like the rest of the group.
+ * Overlaps of up to `slack` beats are left alone.
  */
-export function dropOverlaps(f: BeatFeatures, g: RepeatGroup): void {
+export function dropOverlaps(f: BeatFeatures, g: RepeatGroup, slack = 0): void {
   const fit = (s: number) => g.starts.reduce((sum, t) => (t === s ? sum : sum + windowSimilarity(f, Math.min(s, t), Math.max(s, t), g.length)), 0);
   g.starts.sort((x, y) => x - y);
   for (let k = 1; k < g.starts.length; ++k) {
-    if (g.starts[k] - g.starts[k - 1] >= g.length) continue;
+    if (g.starts[k] - g.starts[k - 1] >= g.length - slack) continue;
     g.starts.splice(fit(g.starts[k]) > fit(g.starts[k - 1]) ? k - 1 : k, 1);
     --k;
   }
 }
 
 /**
- * Detection works on a grid of 2–4 beats, so an occurrence can be a beat or two off and edges
- * snap to that grid. This moves each occurrence (relative to the first) by up to ±3 beats where
- * that clearly sounds more alike, then moves the start and end one beat at a time to where the
- * occurrences stop sounding alike.
+ * Detection works on a grid of 2–4 beats and merges runs found at slightly different offsets, so
+ * an occurrence can be a beat or two off and edges snap to that grid. This moves each occurrence
+ * by up to ±3 beats to where it clearly sounds more like the others (and out of a neighbour it
+ * overlaps), drops what still overlaps, then moves the start and end one beat at a time to where
+ * the occurrences stop sounding alike.
  */
 export function refineGroup(f: BeatFeatures, g: RepeatGroup): void {
   const GAIN = 0.03; // a shift must improve the match by this much (repeats often match themselves when shifted)
   const SHIFT = 3;
-  const ref = g.starts[0];
-  for (let k = 1; k < g.starts.length; ++k) {
-    const s = g.starts[k];
-    const base = windowSimilarity(f, ref, s, g.length);
-    let best = 0;
-    let bestScore = base + GAIN;
-    for (let d = -SHIFT; d <= SHIFT; ++d) {
-      if (d === 0 || s + d < 0 || s + d + g.length > f.beats) continue;
-      // Stay clear of the neighbouring occurrences.
-      if (g.starts.some((t, j) => j !== k && Math.abs(t - (s + d)) < g.length)) continue;
-      const v = windowSimilarity(f, ref, s + d, g.length);
-      if (v > bestScore) {
-        bestScore = v;
-        best = d;
+  const overlap = (k: number, s: number) =>
+    g.starts.reduce((most, t, j) => (j === k ? most : Math.max(most, g.length - Math.abs(t - s))), 0);
+  const fit = (k: number, s: number) =>
+    g.starts.reduce((sum, t, j) => (j === k ? sum : sum + windowSimilarity(f, Math.min(s, t), Math.max(s, t), g.length)), 0) /
+    (g.starts.length - 1);
+  // Two passes, since moving one occurrence changes what the others are compared with.
+  for (let pass = 0; pass < 2 && g.starts.length > 1; ++pass) {
+    for (let k = 0; k < g.starts.length; ++k) {
+      const s = g.starts[k];
+      const before = overlap(k, s);
+      let best = 0;
+      let bestScore = fit(k, s) + GAIN;
+      for (let d = -SHIFT; d <= SHIFT; ++d) {
+        if (d === 0 || s + d < 0 || s + d + g.length > f.beats) continue;
+        // Never move into a neighbour; moving out of one is worth a small loss in similarity.
+        const o = overlap(k, s + d);
+        if (o > 0 && o >= before) continue;
+        const v = fit(k, s + d) + (o < before ? 2 * GAIN : 0);
+        if (v > bestScore) {
+          bestScore = v;
+          best = d;
+        }
       }
+      g.starts[k] = s + best;
     }
-    g.starts[k] = s + best;
   }
+  dropOverlaps(f, g);
+  const ref = g.starts[0];
 
   // Mean similarity across occurrences of beat i (relative to the start), and of a beat pair.
   const beatSim = (i: number) => {

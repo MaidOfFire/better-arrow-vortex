@@ -220,6 +220,85 @@ canvas.notefield {
   margin: 14px 0;
 }
 
+.recent {
+  margin: 4px 0 12px;
+  text-align: left;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.recent-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 2px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: stretch;
+  border-radius: 4px;
+}
+
+.recent-item:hover {
+  background: var(--panel-2);
+}
+
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 5px 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.recent-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-artist {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.recent-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  padding: 0 10px;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.recent-item:hover .recent-remove {
+  visibility: visible;
+}
+
+.recent-remove:hover {
+  color: var(--text);
+}
+
 /* Dialogs ------------------------------------------------------------------------------------- */
 
 .dialog-layer {

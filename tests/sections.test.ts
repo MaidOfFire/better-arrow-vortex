@@ -61,6 +61,18 @@ describe('section detection', () => {
     expect(g.starts).toEqual([12, 112]);
   });
 
+  it('lines up an occurrence that is a beat off instead of dropping it for touching a neighbour', async () => {
+    const { dropOverlaps, refineGroup } = await import('../src/analysis/structure');
+    // A 32-beat phrase played four times in a row.
+    const loop = features(160, 10, 32, 42);
+    for (const to of [74, 106]) loop.data.copyWithin(to * loop.dims, 10 * loop.dims, 42 * loop.dims);
+    const g = { length: 32, starts: [10, 41, 74, 106], score: 1 };
+    dropOverlaps(loop, g, 4);
+    refineGroup(loop, g);
+    expect(g.starts).toEqual([10, 42, 74, 106]);
+    expect(g.length).toBe(32);
+  });
+
   it('ranks the repeat first for find-similar', () => {
     expect(rankMatches(f, 20, 16)[0].start).toBe(120);
   });

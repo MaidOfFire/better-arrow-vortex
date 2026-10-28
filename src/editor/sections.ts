@@ -79,10 +79,14 @@ export class SectionManager {
     return SECTION_COLORS[(i + SECTION_COLORS.length) % SECTION_COLORS.length];
   }
 
-  /** "A", "B", ... by position in the list. */
   /** Tree name: top-level groups A, B, …; parts inside D are Da, Db, …; inside Da: Da1, Da2, … */
   nameOf(g: SectionGroup): string {
     return this.tree().names.get(g.id) ?? '?';
+  }
+
+  /** "Dc1#4": the 4th occurrence of group Dc1 (with a #, since group names can end in digits). */
+  occurrenceLabel(g: SectionGroup, k: number): string {
+    return `${this.nameOf(g)}#${k + 1}`;
   }
 
   /** 0 for top-level groups, 1 for parts inside them, and so on. */

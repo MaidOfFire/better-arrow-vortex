@@ -806,7 +806,7 @@ export class Renderer {
         ctx.globalAlpha = 1;
         // Nested parts often start on the same row as their parent: stagger the labels.
         const dy = 8 + Math.min(depth, 3) * 11;
-        ctx.fillText(`${sec.nameOf(g)}${k + 1}`, x + 6, ya + (v.reverse ? -dy : dy));
+        ctx.fillText(sec.occurrenceLabel(g, k), x + 6, ya + (v.reverse ? -dy : dy));
       });
     });
   }
@@ -849,7 +849,7 @@ export class Renderer {
     const g = sec.shownGroup!;
     const color = sec.colorOf(g);
     const time = formatTime(editor.tempo.rowToTime(pane.start)).replace(/\.\d+$/, '');
-    const label = `${sec.nameOf(g)}${pane.occurrence + 1} · ${sec.measureLabel(pane.start)} · ${time}${pane.focused ? ' (editing)' : ''}`;
+    const label = `${sec.occurrenceLabel(g, pane.occurrence)} · ${sec.measureLabel(pane.start)} · ${time}${pane.focused ? ' (editing)' : ''}`;
     ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';

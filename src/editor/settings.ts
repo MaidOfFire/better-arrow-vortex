@@ -103,7 +103,7 @@ const DEFAULTS: Settings = {
   noteTick: false,
 
   showSections: true,
-  sectionGhosts: true,
+  sectionGhosts: false,
   sectionDiffs: true,
   sectionsInFile: true,
   sideViews: false,
@@ -117,10 +117,11 @@ const DEFAULTS: Settings = {
 
 const KEY = 'better-arrow-vortex.settings';
 /** Bump when a default changes and saved values should be dropped (see MIGRATIONS). */
-const VERSION = 2;
+const VERSION = 3;
 /** Settings reset to their new default when upgrading from an older version. */
 const MIGRATIONS: Record<number, (keyof Settings)[]> = {
   2: ['noteskin'], // DivideByZero became the default skin
+  3: ['sectionGhosts'], // ghost notes became opt-in
 };
 
 export function loadSettings(): Settings {

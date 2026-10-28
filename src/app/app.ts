@@ -5,11 +5,13 @@ import {
   AUDIO_EXTS,
   FileSource,
   SIMFILE_EXTS,
+  ensureWritable,
   pickDirectory,
   pickFiles,
   resolveSource,
   sourceFromDrop,
 } from '../editor/files';
+import { forgetRecent, listRecent, rememberRecent, type RecentSong } from '../editor/recent';
 import { Renderer } from '../editor/renderer';
 import { loadSimfile } from '../model/simfileIO';
 import { ROWS_PER_BEAT } from '../model/types';
@@ -41,6 +43,8 @@ export class App implements ActionHost, DialogHost {
   private readonly chordGraph: ChordGraph;
   private readonly hudView = new Hud();
   private readonly welcome: HTMLElement;
+  private readonly recentList = h('div', { class: 'recent' });
+  private welcomeShown = false;
   private readonly sideViewsButton: HTMLButtonElement;
   private readonly graphButton: HTMLButtonElement;
   private sideViewsState = '';
@@ -79,6 +83,7 @@ export class App implements ActionHost, DialogHost {
         button('Open files…', () => void this.openFilesFallback()),
         button('Try a demo chart', () => void this.openDemo()),
       ),
+      this.recentList,
       h('p', { class: 'hint' }, 'Press F1 for shortcuts. Number keys place notes, arrow keys move the cursor and change the snap, space plays.'),
     );
     const main = h('div', { class: 'main' }, this.canvas, this.hudView.el, this.welcome, this.layer);
@@ -174,14 +179,56 @@ export class App implements ActionHost, DialogHost {
         const sim = loadSimfile(res.simfileText, res.simfileName);
         ed.setSimfile(sim, res.simfileName, source);
         ed.hud(`Opened "${res.simfileName}" (${sim.charts.length} chart${sim.charts.length === 1 ? '' : 's'}).`);
+        this.rememberSource(source);
         await ed.loadMusicFromSource();
       } else if (res.musicName) {
         const file = await source.get(res.musicName);
         if (file) ed.newFromMusic(file, source);
+        this.rememberSource(source);
       }
     } catch (e) {
       ed.hud(`Could not open: ${(e as Error).message}`, 'error');
     }
+  }
+
+  /** Songs opened from a folder go on the start page's recent list. */
+  private rememberSource(source: FileSource): void {
+    const sim = this.editor.sim;
+    if (!source.dir || !sim) return;
+    void rememberRecent({ title: sim.meta.TITLE || source.dir.name, artist: sim.meta.ARTIST ?? '', folder: source.dir.name, dir: source.dir });
+  }
+
+  private async openRecent(song: RecentSong): Promise<void> {
+    if (!this.confirmDiscard()) return;
+    const ed = this.editor;
+    try {
+      // Reading the folder again needs the browser's permission once per session.
+      if (!(await ensureWritable(song.dir))) return ed.hud(`No permission for the folder "${song.folder}".`, 'warning');
+      await song.dir.values().next();
+    } catch {
+      return ed.hud(`"${song.folder}" was moved or deleted. Remove it from the list with ×.`, 'error');
+    }
+    const source = new FileSource();
+    source.dir = song.dir;
+    await this.openSource(source);
+  }
+
+  private async renderRecent(): Promise<void> {
+    const songs = await listRecent();
+    const items = songs.map((song) => {
+      const open = h(
+        'button',
+        { class: 'recent-open', type: 'button', title: `Open the folder "${song.folder}"` },
+        h('span', { class: 'recent-title' }, song.title),
+        song.artist ? h('span', { class: 'recent-artist' }, song.artist) : null,
+        h('span', { class: 'recent-meta' }, `${song.folder} · ${timeAgo(song.openedAt)}`),
+      );
+      const remove = h('button', { class: 'recent-remove', type: 'button', title: 'Remove from this list (the files stay)' }, '×');
+      open.addEventListener('click', () => void this.openRecent(song));
+      remove.addEventListener('click', () => void forgetRecent(song.id).then(() => this.renderRecent()));
+      return h('div', { class: 'recent-item' }, open, remove);
+    });
+    this.recentList.replaceChildren(...(items.length ? [h('div', { class: 'recent-head' }, 'Recent'), ...items] : []));
   }
 
   async loadMusic(): Promise<void> {
@@ -228,7 +275,7 @@ export class App implements ActionHost, DialogHost {
     const g = on ? sec.shownGroup : null;
     const levels = sec.maxDepth + 1;
     const level = levels > 1 ? ` · level ${Math.min(this.editor.settings.sideDepth, sec.maxDepth) + 1}/${levels}` : '';
-    const label = !on ? 'Side views' : g ? `Side views: ${sec.nameOf(g)}${sec.side.occ + 1}${level}` : `Side views: —${level}`;
+    const label = !on ? 'Side views' : g ? `Side views: ${sec.occurrenceLabel(g, sec.side.occ)}${level}` : `Side views: —${level}`;
     const title = on
       ? 'Showing the other occurrences of the section the cursor is in. { and } switch between whole sections and the parts inside them. Click to turn off (Shift+V).'
       : 'Show the other occurrences of the section the cursor is in, next to it (Shift+V).';
@@ -246,6 +293,10 @@ export class App implements ActionHost, DialogHost {
     const ed = this.editor;
     document.title = `${ed.isDirty ? '*' : ''}${ed.isOpen ? `${ed.fileName || 'untitled'} — ` : ''}${APP_NAME}`;
     this.welcome.style.display = ed.isOpen ? 'none' : '';
+    if (this.welcomeShown !== !ed.isOpen) {
+      this.welcomeShown = !ed.isOpen;
+      if (this.welcomeShown) void this.renderRecent();
+    }
     for (const d of this.dialogs.values()) d.refresh();
   }
 
@@ -345,7 +396,7 @@ export class App implements ActionHost, DialogHost {
         sec.focusMain();
         sec.setActive(lane.group);
         ed.setCursorRow(lane.group.starts[lane.index]);
-        ed.hud(`${sec.nameOf(lane.group)}${lane.index + 1}: ${sec.measureLabel(lane.group.starts[lane.index])}`);
+        ed.hud(`${sec.occurrenceLabel(lane.group, lane.index)}: ${sec.measureLabel(lane.group.starts[lane.index])}`);
         return;
       }
       if (r.minimap.contains(x, y)) {
@@ -530,4 +581,12 @@ export class App implements ActionHost, DialogHost {
       void sourceFromDrop(e.dataTransfer).then((s) => this.openSource(s));
     });
   }
+}
+
+function timeAgo(t: number): string {
+  const seconds = (Date.now() - t) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  const units = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]] as const;
+  for (const [unit, size] of units) if (seconds >= size) return rtf.format(-Math.floor(seconds / size), unit);
+  return 'just now';
 }

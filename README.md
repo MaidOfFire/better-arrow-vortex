@@ -22,6 +22,8 @@ Use Chrome or Edge to save files in place (File System Access API): **File > Ope
 song folder, and **Save** writes the `.sm` back into it. Other browsers can open files with
 **File > Open files...** (pick the `.sm` and the music together) and save by downloading.
 You can also drag a song folder or files onto the window, or click **Try a demo chart**.
+The start page lists recently opened song folders (opened with **File > Open** or dropped as a
+folder); click one to open it again (the browser asks once for access).
 
 ## What works
 
@@ -55,7 +57,7 @@ You can also drag a song folder or files onto the window, or click **Try a demo 
   repeat is not a whole number of measures later, and each group's start and end are then moved
   beat by beat to where its occurrences stop sounding alike. The nesting follows from which occurrences contain which,
   also for groups marked by hand, and names follow it (D → Da → Da1). The minimap has one lane per
-  level, the status bar shows the path (E1 › Ea1), and in side views `{` / `}` switch between
+  level, the status bar shows the path (E#1 › Ea#1: occurrence 1 of E, occurrence 1 of Ea), and in side views `{` / `}` switch between
   following whole sections and the parts inside them;
   and can be marked by hand (group from a Tab region, add the cursor position with Shift+A, or
   "find similar to selection"). Groups show as brackets beside the notes and on the minimap and
@@ -67,8 +69,9 @@ You can also drag a song folder or files onto the window, or click **Try a demo 
   playing). Click a side view (or use [ and ]) to edit it; Escape or clicking the main notefield
   goes back, and the main cursor never moves meanwhile. Each side view has a thin progress line
   and an × to hide it; the row scrolls horizontally (Shift+wheel, trackpad or the scrollbar).
-  The minimap always moves the main notefield. Ghost notes and ticks show where the rhythm
-  differs (red when the music there is the same).
+  The minimap always moves the main notefield. Ticks show where the rhythm differs (red when
+  the music there is the same); ghost notes from the other panes can be turned on in the
+  Sections menu.
   Occurrences can be copied onto each other as is or mirrored. Groups are saved inside the .sm/.ssc as one comment
   line between the header and the first chart (`//@better-arrow-vortex {...}`, positions in beats).
   StepMania, Etterna and ArrowVortex skip comments there, so the game sees the same file; editors
